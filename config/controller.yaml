@@ -1,0 +1,20 @@
+# Controller configuration
+# Environment variable GITLAB_TOKEN must be set for authentication
+
+gitlab:
+  repo_path: "."          # Path to the task-bus git repository
+  remote: "origin"
+  branch: "main"
+
+polling:
+  controller_interval: 60                   # seconds between each scan
+  decompose_model: "claude-sonnet-4-6"      # model used for task decomposition
+
+timeouts:
+  claim_ttl: 300          # seconds a task can stay "claimed" before being reopened
+  execution_ttl: 3600     # seconds a task can stay "in_progress" before timeout
+
+cleanup:
+  enabled: true
+  keep_failed_tasks: true                   # keep failed task dirs for debugging
+  artifacts_dir: "./collected_artifacts"    # local directory for collected outputs

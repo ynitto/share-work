@@ -1,0 +1,36 @@
+# Worker configuration
+# Environment variable GITLAB_TOKEN must be set for authentication
+
+worker_id: "worker-node1"   # Must be unique across all workers
+
+gitlab:
+  repo_path: "."
+  remote: "origin"
+  branch: "main"
+
+polling:
+  worker_interval: 30       # seconds between task polls
+  heartbeat_interval: 60    # seconds between heartbeat pushes
+
+execution:
+  max_concurrent_tasks: 3
+  agent_binary: "claude"    # path or name of the CLI agent binary
+  agent_timeout: 3600       # seconds before the agent process is killed
+  agent_model: "claude-sonnet-4-6"
+  agent_sandbox: true       # pass --dangerously-skip-permissions when false
+
+capabilities:
+  - general
+  - code-generation
+  - documentation
+
+resources:
+  # These are auto-detected at runtime; override here if needed
+  # cpu_total: 8
+  # memory_total: 16384   # MB
+  # disk_total: 102400    # MB
+  has_gpu: false
+
+health:
+  enabled: true
+  port: 8765              # HTTP health-check port
