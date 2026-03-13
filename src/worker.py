@@ -9,6 +9,7 @@ import socket
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -94,6 +95,13 @@ class Worker:
         self._lock = threading.Lock()
         self._running = False
 
+        # Local-mode queue: task_ids that have been claimed via Git but not yet
+        # launched (waiting for a free execution slot).
+        # _local_active tracks which of those are currently executing.
+        # While either is non-empty, remote task polling is suppressed.
+        self._local_queue: deque[str] = deque()
+        self._local_active: set[str] = set()
+
         res_cfg = self.config.get("resources", {})
         self._resources = WorkerResources(
             cpu_total=res_cfg.get("cpu_total", os.cpu_count() or 4),
@@ -132,7 +140,12 @@ class Worker:
                 time.sleep(poll_interval)
                 continue
 
-            if self._semaphore._value > 0:  # noqa: SLF001
+            if self._has_local_work():
+                # Local queue has pending/running tasks: drain queue into free
+                # slots, but do NOT claim any new remote tasks until the local
+                # backlog is fully cleared.
+                self._drain_local_queue()
+            elif self._semaphore._value > 0:  # noqa: SLF001
                 self._try_claim_one()
 
             time.sleep(poll_interval)
@@ -147,26 +160,69 @@ class Worker:
     # ------------------------------------------------------------------
 
     def claim_and_launch(self, task_id: str) -> bool:
-        """Claim a specific task and launch it immediately (used for local-mode submission).
+        """Claim a specific task for local execution and queue it.
 
-        If no execution slot is currently available, the task is left in OPEN state
-        and will be picked up by the normal polling cycle.
+        The task is immediately claimed in the Git task bus so no other worker
+        can steal it, then placed in the local queue.  It will start executing
+        as soon as an execution slot becomes free.
 
-        Returns True if the task was successfully claimed and scheduled.
+        While the local queue (or any task originating from it) is non-empty,
+        the normal remote-polling path is suppressed — keeping this worker
+        exclusively focused on local work until the backlog clears.
+
+        Returns True if the task was successfully claimed, False on conflict.
         """
-        # Pre-check semaphore to avoid claiming a task we can't run
-        if self._semaphore._value == 0:  # noqa: SLF001
-            logger.warning(
-                "Local task %s: no free execution slot, will be picked up by polling",
-                task_id,
-            )
-            return False
         if not self.git.claim_task(task_id, self.worker_id):
             logger.warning("Local task %s: claim failed (already taken?)", task_id)
             return False
-        self._launch(task_id)
-        logger.info("Local task %s claimed and launched immediately", task_id)
+        with self._lock:
+            self._local_queue.append(task_id)
+        logger.info(
+            "Local task %s queued (pending=%d, active=%d, slots=%d/%d)",
+            task_id,
+            len(self._local_queue),
+            len(self._local_active),
+            self._semaphore._value,  # noqa: SLF001
+            self.max_concurrent,
+        )
+        self._drain_local_queue()
         return True
+
+    # ------------------------------------------------------------------
+    # Local queue helpers
+    # ------------------------------------------------------------------
+
+    def _has_local_work(self) -> bool:
+        """Return True while local tasks are queued or executing."""
+        with self._lock:
+            return bool(self._local_queue or self._local_active)
+
+    def _drain_local_queue(self) -> None:
+        """Move tasks from the local queue into available execution slots.
+
+        Each iteration acquires one semaphore permit then pops one task_id
+        from the queue.  Stops when either the queue or the semaphore is
+        exhausted.
+        """
+        while True:
+            if not self._semaphore.acquire(blocking=False):
+                break  # No free slot right now
+            with self._lock:
+                if not self._local_queue:
+                    # Queue was already drained; give the permit back
+                    self._semaphore.release()
+                    break
+                task_id = self._local_queue.popleft()
+                self._local_active.add(task_id)
+            thread = threading.Thread(
+                target=self._execute,
+                args=(task_id, True),   # local=True
+                daemon=True,
+                name=f"task-{task_id}",
+            )
+            with self._lock:
+                self._active_tasks[task_id] = thread
+            thread.start()
 
     def _try_claim_one(self) -> None:
         open_tasks = self.git.list_tasks(status=[TaskStatus.OPEN])
@@ -182,13 +238,13 @@ class Worker:
                 return
 
     def _launch(self, task_id: str) -> None:
-        """Launch task execution in a background thread."""
+        """Launch a remote task in a background thread (acquires semaphore)."""
         if not self._semaphore.acquire(blocking=False):
             logger.warning("No free slot for %s, skipping", task_id)
             return
         thread = threading.Thread(
             target=self._execute,
-            args=(task_id,),
+            args=(task_id, False),  # local=False
             daemon=True,
             name=f"task-{task_id}",
         )
@@ -196,13 +252,23 @@ class Worker:
             self._active_tasks[task_id] = thread
         thread.start()
 
-    def _execute(self, task_id: str) -> None:
+    def _execute(self, task_id: str, local: bool = False) -> None:
+        """Execute a task and release the semaphore when done.
+
+        For local tasks (*local=True*), also removes from ``_local_active``
+        and attempts to drain the queue so the next queued task can start.
+        """
         try:
             self._run_task(task_id)
         finally:
             self._semaphore.release()
             with self._lock:
                 self._active_tasks.pop(task_id, None)
+                if local:
+                    self._local_active.discard(task_id)
+            if local:
+                # A slot just opened; start the next task from the local queue.
+                self._drain_local_queue()
 
     def _run_task(self, task_id: str) -> None:
         task_dir = self.git.task_dir(task_id)

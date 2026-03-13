@@ -247,11 +247,17 @@ curl -X POST http://localhost:8080/tasks \
   -d '{"requirement": "バグを修正して", "mode": "local"}'
 ```
 
-レスポンスの `launched` フィールドに即座に起動されたタスク ID が入ります。
+レスポンスにはキュー状態が返ります。
 
 ```json
-{"task_ids": ["task-20260313-a3f9x2"], "launched": ["task-20260313-a3f9x2"]}
+{
+  "task_ids": ["task-20260313-a3f9x2"],
+  "local_running": ["task-20260313-a3f9x2"],
+  "local_queued": []
+}
 ```
+
+スロットが満杯の場合は `local_running` が空で `local_queued` にタスク ID が入ります。スロットが空くと自動でキューから起動されます。
 
 ### リポジトリ指定でタスクを投入する (ブランチに成果物をコミット)
 
@@ -321,7 +327,11 @@ powershell %USERPROFILE%\share-work\scripts\submit-task.ps1 `
 | `mode` | `"local"` を指定するとこのサーバー上で即座に実行する (省略時: 通常の Worker ポーリング) |
 
 **`mode: "local"` の動作:**
-サーバー上の Worker がタスクを即座にクレームして実行します。Git のタスクバス (open → claimed → in_progress → done) の仕組みはそのままで、ポーリング待機なしに動きます。実行スロットが満杯の場合は通常のポーリングにフォールバックします。
+
+1. タスクを Git でクレームし、他 Worker に奪われないようにする
+2. 実行スロット (`max_concurrent_tasks`) に空きがあれば即座に起動
+3. 空きがなければ **ローカルキュー** に積み、スロットが空き次第 FIFO で起動
+4. ローカルキューまたはローカル実行中タスクが存在する間は、リモートタスクのポーリングを停止する (ローカル作業優先)
 
 `repo_path` を指定すると、受注した Worker は指定リポジトリに `share-work/<task_id>` ブランチを作成し、そのブランチ上で AI エージェントを動かして成果物をコミットします。作業が完了したブランチ名は `GET /tasks/{id}` の `result_branch` フィールドで確認できます。
 
@@ -364,7 +374,8 @@ controller:
 worker:
   id: "worker-node1"
   interval: 30                        # タスクポーリング間隔 (秒)
-  max_concurrent_tasks: 3             # 同時実行タスク数の上限
+  max_concurrent_tasks: 3             # 同時実行タスク数の上限 (Worker 数上限)
+                                      # ローカルモードではこの値を超えるタスクはキューに積まれる
   capabilities:
     - general
     - code-generation
