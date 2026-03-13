@@ -90,6 +90,7 @@ def _build_controller_config(cfg: dict) -> dict:
         "polling": {
             "controller_interval": ctrl.get("interval", 60),
             "decompose_model": ctrl.get("decompose_model", "claude-sonnet-4-6"),
+            "decompose_binary": ctrl.get("decompose_binary", "claude"),
         },
         "timeouts": ctrl.get("timeouts", {}),
         "cleanup": ctrl.get("cleanup", {}),
@@ -109,10 +110,14 @@ def _build_worker_config(cfg: dict) -> dict:
         },
         "execution": {
             "max_concurrent_tasks": w.get("max_concurrent_tasks", 3),
-            "agent_binary": agent.get("binary", "claude"),
+            "agent_type": agent.get("type", "claude"),
+            "agent_binary": agent.get("binary") or None,
             "agent_model": agent.get("model", "claude-sonnet-4-6"),
             "agent_timeout": agent.get("timeout", 3600),
             "agent_sandbox": agent.get("sandbox", True),
+            "agent_suggestion_type": agent.get("suggestion_type", "shell"),
+            "self_order_delay": w.get("self_order_delay", 0),
+            "owner_ids": w.get("owner_ids", []),
         },
         "capabilities": w.get("capabilities", []),
         "resources": {
