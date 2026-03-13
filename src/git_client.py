@@ -20,6 +20,51 @@ class GitConflictError(Exception):
     """Raised when a git push is rejected due to conflict."""
 
 
+class WorkRepoClient:
+    """Manages the target (work) repository where the agent performs its task.
+
+    When a task has a ``repo_path``, the worker uses this class to:
+    1. Create a dedicated branch ``share-work/<task_id>`` from the current HEAD.
+    2. Run the AI agent with that branch checked out.
+    3. Stage and commit all resulting changes on that branch.
+    """
+
+    BRANCH_PREFIX = "share-work"
+
+    def __init__(self, repo_path: Path):
+        self.repo_path = repo_path
+        self.repo = git.Repo(repo_path)
+
+    def setup_branch(self, task_id: str) -> str:
+        """Create and checkout a new branch for this task. Returns the branch name."""
+        branch_name = f"{self.BRANCH_PREFIX}/{task_id}"
+        if self.repo.is_dirty(untracked_files=True):
+            logger.warning(
+                "Work repository %s has uncommitted changes; branch will include them",
+                self.repo_path,
+            )
+        self.repo.git.checkout("-b", branch_name)
+        logger.info("Created work branch %s in %s", branch_name, self.repo_path)
+        return branch_name
+
+    def commit_results(self, branch_name: str, task_id: str, summary: str = "") -> bool:
+        """Stage all changes and commit to *branch_name*.
+
+        Returns True if there were changes to commit, False if the working tree
+        was already clean.
+        """
+        self.repo.git.add("-A")
+        # Check for staged changes
+        if not self.repo.index.diff("HEAD") and not self.repo.untracked_files:
+            logger.info("No changes to commit in work repo for task %s", task_id)
+            return False
+        first_line = summary.strip().splitlines()[0][:72] if summary.strip() else task_id
+        commit_msg = f"feat({task_id}): {first_line}"
+        self.repo.index.commit(commit_msg)
+        logger.info("Committed work results to branch %s in %s", branch_name, self.repo_path)
+        return True
+
+
 class GitClient:
     """Manages git operations against the task-bus repository."""
 
@@ -107,6 +152,8 @@ class GitClient:
         resources: Optional[dict] = None,
         priority: str = "normal",
         depends_on: Optional[list[str]] = None,
+        repo_path: Optional[str] = None,
+        mode: Optional[str] = None,
     ) -> TaskMeta:
         """Create a new task directory and push to remote."""
         task_id = generate_task_id()
@@ -121,6 +168,8 @@ class GitClient:
             requested_by=requested_by,
             priority=Priority(priority),
             depends_on=depends_on or [],
+            repo_path=repo_path,
+            mode=mode,
         )
         if resources:
             meta.resources = ResourceRequirements.from_dict(resources)
@@ -234,6 +283,17 @@ class GitClient:
             [meta_file] + artifact_paths,
         )
         logger.info("Task %s finished with status %s", task_id, new_status.value)
+
+    def set_result_branch(self, task_id: str, branch: str) -> None:
+        """Store the result branch name in task meta and push."""
+        meta_file = self.meta_path(task_id)
+        meta = TaskMeta.load(meta_file)
+        meta.result_branch = branch
+        meta.save(meta_file)
+        self.commit_and_push_with_retry(
+            f"task: set result_branch {task_id} -> {branch}", [meta_file]
+        )
+        logger.info("Recorded result_branch=%s for task %s", branch, task_id)
 
     def collect_and_cleanup(self, task_id: str, dest_dir: Path) -> None:
         """Copy artifacts to dest_dir and delete the task from the repo."""

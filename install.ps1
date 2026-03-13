@@ -391,8 +391,21 @@ Write-OK "scripts\status.ps1"
 # ---- scripts\submit-task.ps1 ----
 @"
 # タスクを投入するサンプルスクリプト
-param([Parameter(Mandatory)][string]`$Requirement, [string]`$By = "`$env:USERNAME")
-`$body = @{ requirement = `$Requirement; by = `$By } | ConvertTo-Json
+# 使い方:
+#   submit-task.ps1 -Requirement "要件テキスト"
+#   submit-task.ps1 -Requirement "要件テキスト" -By "alice"
+#   submit-task.ps1 -Requirement "要件テキスト" -Local
+#   submit-task.ps1 -Requirement "要件テキスト" -Local -RepoPath "C:\path\to\repo"
+param(
+    [Parameter(Mandatory)][string]`$Requirement,
+    [string]`$By = "`$env:USERNAME",
+    [string]`$RepoPath = "",
+    [switch]`$Local
+)
+`$hash = @{ requirement = `$Requirement; by = `$By }
+if (`$RepoPath -ne "") { `$hash["repo_path"] = `$RepoPath }
+if (`$Local) { `$hash["mode"] = "local" }
+`$body = `$hash | ConvertTo-Json
 Invoke-RestMethod -Uri "http://127.0.0.1:$Port/tasks" ``
     -Method POST -Body `$body -ContentType "application/json"
 "@ | Set-Content "$InstallDir\scripts\submit-task.ps1" -Encoding UTF8

@@ -191,9 +191,27 @@ class APIHandler(http.server.BaseHTTPRequestHandler):
             if not requirement:
                 return self._error(400, "'requirement' is required")
             by = body.get("by", "http-client")
+            repo_path = body.get("repo_path") or None
+            mode = body.get("mode") or None
+            if mode is not None and mode != "local":
+                return self._error(400, f"'mode' must be 'local' or omitted, got '{mode}'")
             try:
-                task_ids = self.server.controller.submit(requirement, requested_by=by)
-                self._json({"task_ids": task_ids}, status=201)
+                task_ids = self.server.controller.submit(
+                    requirement, requested_by=by, repo_path=repo_path, mode=mode
+                )
+                local_accepted: list[str] = []
+                if mode == "local":
+                    for tid in task_ids:
+                        if self.server.worker.claim_and_launch(tid):
+                            local_accepted.append(tid)
+                resp: dict = {"task_ids": task_ids}
+                if mode == "local":
+                    w = self.server.worker
+                    with w._lock:
+                        running = set(w._local_active)
+                    resp["local_queued"] = [t for t in local_accepted if t not in running]
+                    resp["local_running"] = [t for t in local_accepted if t in running]
+                self._json(resp, status=201)
             except Exception as e:
                 logger.error("submit error: %s", e)
                 self._error(500, str(e))
@@ -277,11 +295,18 @@ class APIHandler(http.server.BaseHTTPRequestHandler):
 
     def _health(self) -> dict:
         w = self.server.worker
+        with w._lock:
+            current_tasks = list(w._active_tasks.keys())
+            local_queued = list(w._local_queue)
+            local_active = list(w._local_active)
         return {
             "status": "ok",
             "worker_id": w.worker_id,
-            "current_tasks": list(w._active_tasks.keys()),
             "slots_free": w._semaphore._value,  # noqa: SLF001
+            "slots_total": w.max_concurrent,
+            "current_tasks": current_tasks,
+            "local_queued": local_queued,
+            "local_active": local_active,
         }
 
     def _metrics(self) -> str:
