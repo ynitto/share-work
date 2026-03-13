@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import http.server
-import json
 import logging
 import os
 import platform
@@ -11,7 +9,6 @@ import socket
 import sys
 import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -105,9 +102,6 @@ class Worker:
 
         self._running = True
         logger.info("Worker %s started (interval=%ds)", self.worker_id, poll_interval)
-
-        if self.config.get("health", {}).get("enabled", True):
-            self._start_health_server()
 
         last_heartbeat = 0.0
 
@@ -254,51 +248,6 @@ class Worker:
             logger.debug("Heartbeat updated for %s", self.worker_id)
         except Exception as e:
             logger.warning("Heartbeat push failed: %s", e)
-
-    # ------------------------------------------------------------------
-    # Health check HTTP server
-    # ------------------------------------------------------------------
-
-    def _start_health_server(self) -> None:
-        port = self.config.get("health", {}).get("port", 8765)
-        worker = self
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path == "/health":
-                    body = json.dumps({
-                        "status": "ok",
-                        "worker_id": worker.worker_id,
-                        "current_tasks": list(worker._active_tasks.keys()),
-                        "slots_free": worker._semaphore._value,
-                    }).encode()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(body)
-                elif self.path == "/metrics":
-                    avail = worker._get_available_resources()
-                    lines = [
-                        f'worker_cpu_available{{worker_id="{worker.worker_id}"}} {avail["cpu"]}',
-                        f'worker_memory_available_mb{{worker_id="{worker.worker_id}"}} {avail["memory"]}',
-                        f'worker_active_tasks{{worker_id="{worker.worker_id}"}} {len(worker._active_tasks)}',
-                    ]
-                    body = "\n".join(lines).encode()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/plain")
-                    self.end_headers()
-                    self.wfile.write(body)
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-
-            def log_message(self, *args):
-                pass  # Suppress access logs
-
-        server = http.server.HTTPServer(("0.0.0.0", port), Handler)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        logger.info("Health server listening on :%d", port)
 
     # ------------------------------------------------------------------
     # Utility
