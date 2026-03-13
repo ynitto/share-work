@@ -17,7 +17,7 @@ import yaml
 
 from agent import AgentRunner, create_agent_runner
 from git_client import GitClient, GitConflictError
-from models import Priority, TaskMeta, TaskStatus, WorkerResources, WorkerState, WorkerStatus, PRIORITY_ORDER, _now_iso
+from models import Priority, TaskMeta, TaskStatus, WorkerResources, WorkerState, WorkerStatus, PRIORITY_ORDER, _now_iso, seconds_since
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,8 @@ DEFAULT_CONFIG = {
         "agent_model": "claude-sonnet-4-6",
         "agent_sandbox": True,
         "agent_suggestion_type": "shell",
+        "self_order_delay": 0,   # seconds to wait before claiming own tasks (0 = disabled)
+        "owner_ids": [],         # requested_by values treated as "self" (worker_id always included)
     },
     "capabilities": [],
     "resources": {
@@ -81,6 +83,11 @@ class Worker:
         )
 
         self.max_concurrent: int = exec_cfg.get("max_concurrent_tasks", 3)
+        self.self_order_delay: int = exec_cfg.get("self_order_delay", 0)
+        configured_owners: list[str] = list(exec_cfg.get("owner_ids", []))
+        if self.worker_id not in configured_owners:
+            configured_owners.append(self.worker_id)
+        self.owner_ids: list[str] = configured_owners
         self.capabilities: list[str] = self.config.get("capabilities", [])
         self._semaphore = threading.Semaphore(self.max_concurrent)
         self._active_tasks: dict[str, threading.Thread] = {}
@@ -209,13 +216,26 @@ class Worker:
         avail = self._get_available_resources()
         skills_ok = all(s in self.capabilities for s in req.required_skills)
         gpu_ok = (not req.gpu) or self._resources.has_gpu
-        return (
+        if not (
             avail["cpu"] >= req.cpu
             and avail["memory"] >= req.memory
             and avail["disk"] >= req.disk
             and skills_ok
             and gpu_ok
-        )
+        ):
+            return False
+
+        # Self-order delay: wait before claiming tasks submitted by this worker
+        if self.self_order_delay > 0 and meta.requested_by in self.owner_ids:
+            age = seconds_since(meta.created_at)
+            if age < self.self_order_delay:
+                logger.debug(
+                    "Self-order delay: skipping %s (age=%.0fs < delay=%ds, requested_by=%s)",
+                    meta.task_id, age, self.self_order_delay, meta.requested_by,
+                )
+                return False
+
+        return True
 
     def _get_available_resources(self) -> dict:
         cpu_used_pct = psutil.cpu_percent(interval=0.1)

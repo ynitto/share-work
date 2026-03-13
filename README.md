@@ -236,9 +236,28 @@ worker:
     timeout: 3600                     # エージェント実行タイムアウト (秒)
     sandbox: true                     # サンドボックスモード (Claude のみ)
     # suggestion_type: "shell"        # GitHub Copilot のみ: shell | git | gh
+  self_order_delay: 0                 # 自分発注タスクを受注するまでの待機時間 (秒, 0=無効)
+  # owner_ids:                        # 「自分」とみなす requested_by 値 (worker_id は常に含まれる)
+  #   - alice
   resources:
     has_gpu: false
 ```
+
+### 自分発注タスクの待機 (`self_order_delay`)
+
+同一サーバーが発注と受注を兼ねる場合に、自分が投入したタスクをすぐに自分で受注してしまう問題を防ぎます。`self_order_delay` に秒数を設定すると、その時間が経過するまで当該タスクをスキップします。他のワーカーが先に受注する機会を与える余裕時間として機能します。
+
+```yaml
+worker:
+  self_order_delay: 300   # 5分間は自分発注タスクをスキップ
+  owner_ids:              # 省略時は worker_id のみが「自分」
+    - alice               # POST /tasks の by パラメータと一致する値を列挙
+    - worker-node1
+```
+
+- `self_order_delay: 0` (既定) で機能無効
+- `owner_ids` を省略した場合、`worker_id` だけが自分とみなされる
+- 待機時間が過ぎてもタスクが未受注なら、自分が通常通りクレームする
 
 ### エージェント種別 (`agent.type`)
 

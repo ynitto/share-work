@@ -47,6 +47,17 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def seconds_since(iso_str: Optional[str]) -> float:
+    """Return seconds elapsed since the given ISO-8601 timestamp. Returns 0 on parse error."""
+    if not iso_str:
+        return 0.0
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - dt).total_seconds()
+    except Exception:
+        return 0.0
+
+
 def generate_task_id() -> str:
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))

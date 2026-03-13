@@ -39,6 +39,9 @@ worker:
     timeout: 3600
     sandbox: true                       # Sandbox mode (Claude only)
     # suggestion_type: "shell"          # Copilot only: "shell" | "git" | "gh"
+  self_order_delay: 0                   # seconds to wait before claiming own tasks (0 = disabled)
+  # owner_ids:                          # requested_by values treated as "self" (worker_id always included)
+  #   - alice
   resources:
     has_gpu: false
     # cpu_total / memory_total / disk_total are auto-detected at runtime

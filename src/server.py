@@ -116,6 +116,8 @@ def _build_worker_config(cfg: dict) -> dict:
             "agent_timeout": agent.get("timeout", 3600),
             "agent_sandbox": agent.get("sandbox", True),
             "agent_suggestion_type": agent.get("suggestion_type", "shell"),
+            "self_order_delay": w.get("self_order_delay", 0),
+            "owner_ids": w.get("owner_ids", []),
         },
         "capabilities": w.get("capabilities", []),
         "resources": {

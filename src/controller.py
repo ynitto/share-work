@@ -15,7 +15,7 @@ from typing import Optional
 import yaml
 
 from git_client import GitClient
-from models import Priority, TaskMeta, TaskStatus, _now_iso
+from models import Priority, TaskMeta, TaskStatus, _now_iso, seconds_since
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +41,6 @@ DEFAULT_CONFIG = {
     },
 }
 
-
-def _seconds_since(iso_str: Optional[str]) -> float:
-    """Return seconds elapsed since the given ISO-8601 timestamp."""
-    if not iso_str:
-        return 0.0
-    try:
-        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        return (datetime.now(timezone.utc) - dt).total_seconds()
-    except Exception:
-        return 0.0
 
 
 class TaskDecomposer:
@@ -235,7 +225,7 @@ class Controller:
 
     def _check_claim_timeout(self, meta: TaskMeta) -> None:
         ttl = meta.timeouts.claim_ttl
-        elapsed = _seconds_since(meta.updated_at)
+        elapsed = seconds_since(meta.updated_at)
         if elapsed > ttl:
             logger.warning(
                 "Task %s stuck in 'claimed' for %.0fs (ttl=%ds), reopening",
@@ -251,7 +241,7 @@ class Controller:
 
     def _check_execution_timeout(self, meta: TaskMeta) -> None:
         ttl = meta.timeouts.execution_ttl
-        elapsed = _seconds_since(meta.execution.started_at)
+        elapsed = seconds_since(meta.execution.started_at)
         if elapsed > ttl:
             logger.warning(
                 "Task %s timed out in execution (%.0fs > %ds)",
