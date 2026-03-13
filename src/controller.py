@@ -28,6 +28,7 @@ DEFAULT_CONFIG = {
     "polling": {
         "controller_interval": 60,
         "decompose_model": "claude-sonnet-4-6",
+        "decompose_binary": "claude",
     },
     "timeouts": {
         "claim_ttl": 300,
@@ -55,8 +56,9 @@ def _seconds_since(iso_str: Optional[str]) -> float:
 class TaskDecomposer:
     """Uses an AI model to decompose a natural-language requirement into tasks."""
 
-    def __init__(self, model: str = "claude-sonnet-4-6"):
+    def __init__(self, model: str = "claude-sonnet-4-6", binary: str = "claude"):
         self.model = model
+        self.binary = binary
 
     def decompose(self, requirement: str, requested_by: str = "unknown") -> list[dict]:
         """
@@ -86,13 +88,13 @@ Requirement: {requirement}
 Respond with ONLY the JSON array, no other text."""
 
         result = subprocess.run(
-            ["claude", "--print", "--model", self.model, prompt],
+            [self.binary, "--print", "--model", self.model, prompt],
             capture_output=True,
             text=True,
             timeout=120,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"claude CLI error: {result.stderr}")
+            raise RuntimeError(f"{self.binary} CLI error: {result.stderr}")
 
         raw = result.stdout.strip()
         # Strip markdown code fences if present
@@ -127,7 +129,8 @@ class Controller:
             branch=self.config["gitlab"]["branch"],
         )
         self.decomposer = TaskDecomposer(
-            model=self.config["polling"].get("decompose_model", "claude-sonnet-4-6")
+            model=self.config["polling"].get("decompose_model", "claude-sonnet-4-6"),
+            binary=self.config["polling"].get("decompose_binary", "claude"),
         )
         self.artifacts_dir = Path(self.config["cleanup"].get("artifacts_dir", "./collected_artifacts"))
         self._running = False

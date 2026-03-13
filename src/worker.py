@@ -15,7 +15,7 @@ from typing import Optional
 import psutil
 import yaml
 
-from agent import AgentRunner
+from agent import AgentRunner, create_agent_runner
 from git_client import GitClient, GitConflictError
 from models import Priority, TaskMeta, TaskStatus, WorkerResources, WorkerState, WorkerStatus, PRIORITY_ORDER, _now_iso
 
@@ -34,10 +34,12 @@ DEFAULT_CONFIG = {
     },
     "execution": {
         "max_concurrent_tasks": 3,
-        "agent_binary": "claude",
+        "agent_type": "claude",
+        "agent_binary": None,
         "agent_timeout": 3600,
         "agent_model": "claude-sonnet-4-6",
         "agent_sandbox": True,
+        "agent_suggestion_type": "shell",
     },
     "capabilities": [],
     "resources": {
@@ -69,11 +71,13 @@ class Worker:
         )
 
         exec_cfg = self.config["execution"]
-        self.agent = AgentRunner(
-            binary=exec_cfg.get("agent_binary", "claude"),
+        self.agent = create_agent_runner(
+            agent_type=exec_cfg.get("agent_type", "claude"),
+            binary=exec_cfg.get("agent_binary") or None,
             model=exec_cfg.get("agent_model", "claude-sonnet-4-6"),
             timeout=exec_cfg.get("agent_timeout", 3600),
             sandbox=exec_cfg.get("agent_sandbox", True),
+            suggestion_type=exec_cfg.get("agent_suggestion_type", "shell"),
         )
 
         self.max_concurrent: int = exec_cfg.get("max_concurrent_tasks", 3)

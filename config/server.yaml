@@ -12,6 +12,7 @@ gitlab:
 controller:
   interval: 60                          # seconds between each monitoring scan
   decompose_model: "claude-sonnet-4-6"  # model used for task decomposition
+  decompose_binary: "claude"            # CLI binary used for task decomposition (claude only)
   timeouts:
     claim_ttl: 300                      # seconds before claimed task is reopened
     execution_ttl: 3600                 # seconds before in_progress task times out
@@ -30,10 +31,14 @@ worker:
     - code-generation
     - documentation
   agent:
-    binary: "claude"
-    model: "claude-sonnet-4-6"
+    # Agent type: "claude" | "copilot" (GitHub Copilot) | "amazon-q"
+    type: "claude"
+    # Binary path override (optional; defaults to "claude", "gh", or "q" per type)
+    # binary: "claude"
+    model: "claude-sonnet-4-6"          # Model name (Claude only)
     timeout: 3600
-    sandbox: true
+    sandbox: true                       # Sandbox mode (Claude only)
+    # suggestion_type: "shell"          # Copilot only: "shell" | "git" | "gh"
   resources:
     has_gpu: false
     # cpu_total / memory_total / disk_total are auto-detected at runtime
