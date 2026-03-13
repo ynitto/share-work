@@ -16,7 +16,7 @@ import psutil
 import yaml
 
 from agent import AgentRunner, create_agent_runner
-from git_client import GitClient, GitConflictError
+from git_client import GitClient, GitConflictError, WorkRepoClient
 from models import Priority, TaskMeta, TaskStatus, WorkerResources, WorkerState, WorkerStatus, PRIORITY_ORDER, _now_iso, seconds_since
 
 logger = logging.getLogger(__name__)
@@ -188,6 +188,10 @@ class Worker:
         requirements_path = task_dir / "requirements.txt"
         workplan_path = task_dir / "workplan.md"
 
+        # Load meta to get repo_path before starting
+        from models import TaskMeta
+        meta = TaskMeta.load(self.git.meta_path(task_id))
+
         # Transition to in_progress
         try:
             self.git.start_task(task_id, self.worker_id, self.worker_node)
@@ -195,12 +199,60 @@ class Worker:
             logger.error("Failed to start task %s: %s", task_id, e)
             return
 
-        logger.info("Executing task %s", task_id)
+        # Set up work repository branch if repo_path is specified
+        work_dir: Optional[Path] = None
+        result_branch: Optional[str] = None
+        work_repo: Optional[WorkRepoClient] = None
+
+        if meta.repo_path:
+            repo_path = Path(meta.repo_path)
+            if not repo_path.exists():
+                logger.error(
+                    "Task %s: repo_path does not exist: %s", task_id, repo_path
+                )
+                try:
+                    self.git.finish_task(task_id, success=False)
+                except Exception:
+                    pass
+                return
+            try:
+                work_repo = WorkRepoClient(repo_path)
+                result_branch = work_repo.setup_branch(task_id)
+                work_dir = repo_path
+                # Persist result_branch in meta so observers can see it
+                self.git.set_result_branch(task_id, result_branch)
+            except Exception as e:
+                logger.error(
+                    "Failed to set up work branch for task %s: %s", task_id, e
+                )
+                try:
+                    self.git.finish_task(task_id, success=False)
+                except Exception:
+                    pass
+                return
+
+        logger.info(
+            "Executing task %s (work_dir=%s)",
+            task_id,
+            work_dir or artifacts_dir,
+        )
         success = self.agent.run(
             requirements_path=requirements_path,
             workplan_path=workplan_path,
             output_dir=artifacts_dir,
+            work_dir=work_dir,
         )
+
+        # Commit agent results to the target repository branch
+        if work_repo and result_branch:
+            try:
+                requirements_text = requirements_path.read_text(encoding="utf-8")
+                work_repo.commit_results(result_branch, task_id, summary=requirements_text)
+            except Exception as e:
+                logger.error(
+                    "Failed to commit work results for task %s: %s", task_id, e
+                )
+                success = False
 
         try:
             self.git.finish_task(task_id, success)

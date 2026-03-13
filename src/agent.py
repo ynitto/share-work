@@ -53,24 +53,32 @@ class AgentRunner:
         requirements_path: Path,
         workplan_path: Path,
         output_dir: Path,
+        work_dir: Optional[Path] = None,
         extra_env: Optional[dict] = None,
     ) -> bool:
         """Run the AI agent for a task.
 
         Returns True on success, False on failure.
-        The agent is expected to produce files inside *output_dir*.
+
+        Args:
+            output_dir: Directory for agent logs/artifacts (always in the task bus repo).
+            work_dir:   Optional target repository directory. When provided the agent
+                        runs with this as its working directory and is instructed to
+                        create/modify files there. Logs are still written to *output_dir*.
         """
         output_dir.mkdir(parents=True, exist_ok=True)
 
         requirements = requirements_path.read_text(encoding="utf-8")
         workplan = workplan_path.read_text(encoding="utf-8") if workplan_path.exists() else ""
 
-        prompt = self._build_prompt(requirements, workplan, output_dir)
+        prompt = self._build_prompt(requirements, workplan, output_dir, work_dir=work_dir)
 
-        cmd, stdin_data = self._build_command(prompt, output_dir)
+        # The agent's cwd is the work repo when specified; otherwise the output dir.
+        agent_cwd = work_dir if work_dir is not None else output_dir
+        cmd, stdin_data = self._build_command(prompt, agent_cwd)
         env = {**os.environ, **(extra_env or {})}
 
-        logger.info("Running agent: %s", " ".join(cmd[:3]) + " ...")
+        logger.info("Running agent: %s (cwd=%s)", " ".join(cmd[:3]) + " ...", agent_cwd)
         try:
             result = subprocess.run(
                 cmd,
@@ -79,7 +87,7 @@ class AgentRunner:
                 text=True,
                 timeout=self.timeout,
                 env=env,
-                cwd=str(output_dir),
+                cwd=str(agent_cwd),
             )
         except subprocess.TimeoutExpired:
             logger.error("Agent timed out after %ds", self.timeout)
@@ -93,6 +101,7 @@ class AgentRunner:
         stdout = result.stdout or ""
         stderr = result.stderr or ""
 
+        # Always write stdout/stderr logs to output_dir (task bus), not to work_dir
         if stdout:
             (output_dir / "agent_stdout.txt").write_text(stdout, encoding="utf-8")
 
@@ -101,23 +110,41 @@ class AgentRunner:
             self._write_error(output_dir, f"Exit code {result.returncode}\n\n{stderr}")
             return False
 
-        # Ensure result.md exists as the canonical output
-        result_md = output_dir / "result.md"
-        if not result_md.exists():
-            result_md.write_text(
+        # Ensure result.md exists as the canonical summary.
+        # When work_dir is set, look there first; fall back to output_dir.
+        result_md_primary = (work_dir or output_dir) / "result.md"
+        if not result_md_primary.exists():
+            result_md_primary.write_text(
                 f"# Task Result\n\n{stdout}\n",
                 encoding="utf-8",
             )
 
-        logger.info("Agent completed successfully, output in %s", output_dir)
+        logger.info("Agent completed successfully, output in %s", agent_cwd)
         return True
 
     # ------------------------------------------------------------------
     # Overridable helpers
     # ------------------------------------------------------------------
 
-    def _build_prompt(self, requirements: str, workplan: str, output_dir: Path) -> str:
+    def _build_prompt(
+        self,
+        requirements: str,
+        workplan: str,
+        output_dir: Path,
+        work_dir: Optional[Path] = None,
+    ) -> str:
         plan_section = f"\n\n## Work Plan\n{workplan}" if workplan.strip() else ""
+        if work_dir is not None:
+            return (
+                f"# Task Requirements\n\n{requirements}"
+                f"{plan_section}\n\n"
+                f"## Instructions\n"
+                f"You are working inside a Git repository located at `{work_dir}`.\n"
+                f"A dedicated branch has already been created and checked out for you.\n"
+                f"Implement the requirement by creating or modifying files in this repository.\n"
+                f"Your changes will be committed to the branch automatically when you finish.\n"
+                f"Write a `result.md` file in the repository root summarising what you did.\n"
+            )
         return (
             f"# Task Requirements\n\n{requirements}"
             f"{plan_section}\n\n"
@@ -210,7 +237,13 @@ class CopilotAgentRunner(AgentRunner):
         super().__init__(binary=binary, timeout=timeout, **kwargs)
         self.suggestion_type = suggestion_type
 
-    def _build_prompt(self, requirements: str, workplan: str, output_dir: Path) -> str:
+    def _build_prompt(
+        self,
+        requirements: str,
+        workplan: str,
+        output_dir: Path,
+        work_dir: Optional[Path] = None,
+    ) -> str:
         # Copilot suggest works best with a concise, single-line description
         first_line = requirements.strip().splitlines()[0]
         plan_hint = f" ({workplan.strip().splitlines()[0]})" if workplan.strip() else ""

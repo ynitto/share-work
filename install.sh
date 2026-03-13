@@ -427,16 +427,40 @@ chmod +x "$INSTALL_DIR/scripts/status.sh"
 ok "scripts/status.sh"
 
 # ---- scripts/submit-task.sh ----
+# Write the script in two parts: a single heredoc using \$ for unexpanded vars,
+# and $PORT (without backslash) for the installer-time expansion.
 cat > "$INSTALL_DIR/scripts/submit-task.sh" <<EOF
 #!/usr/bin/env bash
 # タスクを投入するサンプルスクリプト
-# 使い方: submit-task.sh "要件テキスト" [投稿者名]
+# 使い方:
+#   submit-task.sh "要件テキスト" [投稿者名] [リポジトリパス]
+#
+# 例:
+#   submit-task.sh "README を更新して"
+#   submit-task.sh "バグを直して" alice
+#   submit-task.sh "機能を追加して" alice /path/to/repo
 PORT=$PORT
-REQUIREMENT="\${1:?使い方: \$0 '要件テキスト' [投稿者名]}"
+REQUIREMENT="\${1:?\$0 '要件テキスト' [投稿者名] [リポジトリパス]}"
 BY="\${2:-\$USER}"
+REPO_PATH="\${3:-}"
+
+if [[ -n "\$REPO_PATH" ]]; then
+    BODY=\$(python3 -c "
+import json, sys
+req, by, rp = sys.argv[1], sys.argv[2], sys.argv[3]
+print(json.dumps({'requirement': req, 'by': by, 'repo_path': rp}))
+" "\$REQUIREMENT" "\$BY" "\$REPO_PATH")
+else
+    BODY=\$(python3 -c "
+import json, sys
+req, by = sys.argv[1], sys.argv[2]
+print(json.dumps({'requirement': req, 'by': by}))
+" "\$REQUIREMENT" "\$BY")
+fi
+
 curl -X POST "http://127.0.0.1:\$PORT/tasks" \\
     -H "Content-Type: application/json" \\
-    -d "{\"requirement\": \"\$REQUIREMENT\", \"by\": \"\$BY\"}"
+    -d "\$BODY"
 echo
 EOF
 chmod +x "$INSTALL_DIR/scripts/submit-task.sh"
@@ -580,7 +604,7 @@ echo "    起動 (手動)    : $INSTALL_DIR/scripts/start.sh"
 echo "    起動 (BG)      : $INSTALL_DIR/scripts/start-daemon.sh"
 echo "    停止           : $INSTALL_DIR/scripts/stop.sh"
 echo "    状態確認       : $INSTALL_DIR/scripts/status.sh"
-echo "    タスク投入     : $INSTALL_DIR/scripts/submit-task.sh '要件テキスト'"
+echo "    タスク投入     : $INSTALL_DIR/scripts/submit-task.sh '要件テキスト' [投稿者] [/path/to/repo]"
 echo ""
 
 if [[ "$NO_SERVICE" == "false" ]]; then

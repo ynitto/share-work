@@ -174,6 +174,7 @@ powershell %USERPROFILE%\share-work\scripts\start.ps1
 ### タスクを投入する
 
 ```bash
+# 基本: 成果物は tasks/<id>/artifacts/ に保存
 curl -X POST http://localhost:8080/tasks \
   -H "Content-Type: application/json" \
   -d '{"requirement": "Pythonで素数判定関数を実装してテストも書いて", "by": "alice"}'
@@ -182,6 +183,19 @@ curl -X POST http://localhost:8080/tasks \
 ```json
 {"task_ids": ["task-20260313-a3f9x2"]}
 ```
+
+```bash
+# repo_path 指定: 対象リポジトリのブランチに成果物をコミット
+curl -X POST http://localhost:8080/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "requirement": "README に使い方のセクションを追加して",
+    "by": "alice",
+    "repo_path": "/home/alice/my-project"
+  }'
+```
+
+Worker は `/home/alice/my-project` に `share-work/task-20260313-a3f9x2` ブランチを作成し、AI が作業した後にコミットします。`result_branch` でブランチ名を確認できます。
 
 ### タスク一覧を確認する
 
@@ -203,6 +217,34 @@ curl http://localhost:8080/tasks/task-20260313-a3f9x2
 
 ```bash
 curl -X DELETE http://localhost:8080/tasks/task-20260313-a3f9x2
+```
+
+### リポジトリ指定でタスクを投入する (ブランチに成果物をコミット)
+
+**macOS / Linux:**
+```bash
+~/share-work/scripts/submit-task.sh "README に使い方を追記して" alice /home/alice/my-project
+```
+
+**Windows:**
+```powershell
+powershell %USERPROFILE%\share-work\scripts\submit-task.ps1 `
+  -Requirement "README に使い方を追記して" `
+  -By "alice" `
+  -RepoPath "C:\Users\alice\my-project"
+```
+
+Worker は `/home/alice/my-project` (または `C:\Users\alice\my-project`) に `share-work/<task_id>` ブランチを作成し、AI エージェントが作業した内容をコミットします。
+
+```bash
+# 作業完了後、result_branch でブランチ名を確認
+curl http://localhost:8080/tasks/task-20260313-a3f9x2 | python3 -m json.tool
+# => "result_branch": "share-work/task-20260313-a3f9x2"
+
+# 対象リポジトリでブランチを確認・マージ
+cd /home/alice/my-project
+git log share-work/task-20260313-a3f9x2 --oneline
+git merge share-work/task-20260313-a3f9x2
 ```
 
 ### Windows から PowerShell でタスクを投入する
@@ -231,9 +273,12 @@ powershell %USERPROFILE%\share-work\scripts\submit-task.ps1 `
 ```json
 {
   "requirement": "自然文で書いた要件 (必須)",
-  "by": "投稿者名 (省略可)"
+  "by": "投稿者名 (省略可)",
+  "repo_path": "/path/to/your/repo (省略可)"
 }
 ```
+
+`repo_path` を指定すると、受注した Worker は指定リポジトリに `share-work/<task_id>` ブランチを作成し、そのブランチ上で AI エージェントを動かして成果物をコミットします。作業が完了したブランチ名は `GET /tasks/{id}` の `result_branch` フィールドで確認できます。
 
 **タスクステータスの遷移**
 

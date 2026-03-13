@@ -191,8 +191,11 @@ class APIHandler(http.server.BaseHTTPRequestHandler):
             if not requirement:
                 return self._error(400, "'requirement' is required")
             by = body.get("by", "http-client")
+            repo_path = body.get("repo_path") or None
             try:
-                task_ids = self.server.controller.submit(requirement, requested_by=by)
+                task_ids = self.server.controller.submit(
+                    requirement, requested_by=by, repo_path=repo_path
+                )
                 self._json({"task_ids": task_ids}, status=201)
             except Exception as e:
                 logger.error("submit error: %s", e)

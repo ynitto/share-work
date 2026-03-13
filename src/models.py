@@ -150,6 +150,9 @@ class TaskMeta:
     depends_on: list[str] = field(default_factory=list)
     timeouts: Timeouts = field(default_factory=Timeouts)
     execution: ExecutionRecord = field(default_factory=ExecutionRecord)
+    # Target repository for work output (optional)
+    repo_path: Optional[str] = None
+    result_branch: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -165,6 +168,8 @@ class TaskMeta:
             "depends_on": self.depends_on,
             "timeouts": self.timeouts.to_dict(),
             "execution": self.execution.to_dict(),
+            "repo_path": self.repo_path,
+            "result_branch": self.result_branch,
         }
 
     def save(self, path: Path) -> None:
@@ -186,6 +191,8 @@ class TaskMeta:
             depends_on=d.get("depends_on", []),
             timeouts=Timeouts.from_dict(d.get("timeouts", {})),
             execution=ExecutionRecord.from_dict(d.get("execution", {})),
+            repo_path=d.get("repo_path"),
+            result_branch=d.get("result_branch"),
         )
 
     @classmethod
