@@ -134,14 +134,17 @@ class Controller:
         requirement: str,
         requested_by: str = "unknown",
         repo_path: Optional[str] = None,
+        mode: Optional[str] = None,
     ) -> list[str]:
         """Decompose requirement and push tasks to the task bus. Returns list of task_ids.
 
         Args:
             repo_path: Optional path to a local Git repository where the worker
                        will create a branch and commit results.
+            mode:      ``"local"`` to execute immediately on this machine;
+                       ``None`` (default) for normal worker-polling mode.
         """
-        logger.info("Decomposing requirement from %s", requested_by)
+        logger.info("Decomposing requirement from %s (mode=%s)", requested_by, mode or "normal")
         if repo_path:
             logger.info("  Work repo: %s", repo_path)
         specs = self.decomposer.decompose(requirement, requested_by)
@@ -159,6 +162,7 @@ class Controller:
                 priority=spec.get("priority", "normal"),
                 depends_on=depends_on,
                 repo_path=repo_path,
+                mode=mode,
             )
             created_ids.append(meta.task_id)
             logger.info("  Submitted task %s", meta.task_id)

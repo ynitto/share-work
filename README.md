@@ -219,6 +219,40 @@ curl http://localhost:8080/tasks/task-20260313-a3f9x2
 curl -X DELETE http://localhost:8080/tasks/task-20260313-a3f9x2
 ```
 
+### ローカルモードでタスクを投入する (即座に実行)
+
+**macOS / Linux:**
+```bash
+# このサーバー上で即座に実行
+~/share-work/scripts/submit-task.sh --local "Pythonで素数判定関数を実装してテストも書いて"
+
+# リポジトリ指定と組み合わせることも可能
+~/share-work/scripts/submit-task.sh --local --repo /home/alice/my-project "READMEを更新して"
+```
+
+**Windows:**
+```powershell
+powershell %USERPROFILE%\share-work\scripts\submit-task.ps1 `
+  -Requirement "Pythonで素数判定関数を実装してテストも書いて" -Local
+
+# リポジトリ指定と組み合わせ
+powershell %USERPROFILE%\share-work\scripts\submit-task.ps1 `
+  -Requirement "READMEを更新して" -Local -RepoPath "C:\Users\alice\my-project"
+```
+
+**curl で直接:**
+```bash
+curl -X POST http://localhost:8080/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"requirement": "バグを修正して", "mode": "local"}'
+```
+
+レスポンスの `launched` フィールドに即座に起動されたタスク ID が入ります。
+
+```json
+{"task_ids": ["task-20260313-a3f9x2"], "launched": ["task-20260313-a3f9x2"]}
+```
+
 ### リポジトリ指定でタスクを投入する (ブランチに成果物をコミット)
 
 **macOS / Linux:**
@@ -274,9 +308,20 @@ powershell %USERPROFILE%\share-work\scripts\submit-task.ps1 `
 {
   "requirement": "自然文で書いた要件 (必須)",
   "by": "投稿者名 (省略可)",
-  "repo_path": "/path/to/your/repo (省略可)"
+  "repo_path": "/path/to/your/repo (省略可)",
+  "mode": "local (省略可)"
 }
 ```
+
+| フィールド | 説明 |
+|-----------|------|
+| `requirement` | 自然文で書いた要件 (必須) |
+| `by` | 投稿者名 (省略時: `"http-client"`) |
+| `repo_path` | 作業対象の Git リポジトリパス。指定すると Worker はここにブランチを作成して成果物をコミットする |
+| `mode` | `"local"` を指定するとこのサーバー上で即座に実行する (省略時: 通常の Worker ポーリング) |
+
+**`mode: "local"` の動作:**
+サーバー上の Worker がタスクを即座にクレームして実行します。Git のタスクバス (open → claimed → in_progress → done) の仕組みはそのままで、ポーリング待機なしに動きます。実行スロットが満杯の場合は通常のポーリングにフォールバックします。
 
 `repo_path` を指定すると、受注した Worker は指定リポジトリに `share-work/<task_id>` ブランチを作成し、そのブランチ上で AI エージェントを動かして成果物をコミットします。作業が完了したブランチ名は `GET /tasks/{id}` の `result_branch` フィールドで確認できます。
 

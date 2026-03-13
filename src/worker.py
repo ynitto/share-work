@@ -146,6 +146,28 @@ class Worker:
     # Claim & execute
     # ------------------------------------------------------------------
 
+    def claim_and_launch(self, task_id: str) -> bool:
+        """Claim a specific task and launch it immediately (used for local-mode submission).
+
+        If no execution slot is currently available, the task is left in OPEN state
+        and will be picked up by the normal polling cycle.
+
+        Returns True if the task was successfully claimed and scheduled.
+        """
+        # Pre-check semaphore to avoid claiming a task we can't run
+        if self._semaphore._value == 0:  # noqa: SLF001
+            logger.warning(
+                "Local task %s: no free execution slot, will be picked up by polling",
+                task_id,
+            )
+            return False
+        if not self.git.claim_task(task_id, self.worker_id):
+            logger.warning("Local task %s: claim failed (already taken?)", task_id)
+            return False
+        self._launch(task_id)
+        logger.info("Local task %s claimed and launched immediately", task_id)
+        return True
+
     def _try_claim_one(self) -> None:
         open_tasks = self.git.list_tasks(status=[TaskStatus.OPEN])
         # Sort by priority then creation time

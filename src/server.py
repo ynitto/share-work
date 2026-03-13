@@ -192,11 +192,19 @@ class APIHandler(http.server.BaseHTTPRequestHandler):
                 return self._error(400, "'requirement' is required")
             by = body.get("by", "http-client")
             repo_path = body.get("repo_path") or None
+            mode = body.get("mode") or None
+            if mode is not None and mode != "local":
+                return self._error(400, f"'mode' must be 'local' or omitted, got '{mode}'")
             try:
                 task_ids = self.server.controller.submit(
-                    requirement, requested_by=by, repo_path=repo_path
+                    requirement, requested_by=by, repo_path=repo_path, mode=mode
                 )
-                self._json({"task_ids": task_ids}, status=201)
+                launched: list[str] = []
+                if mode == "local":
+                    for tid in task_ids:
+                        if self.server.worker.claim_and_launch(tid):
+                            launched.append(tid)
+                self._json({"task_ids": task_ids, "launched": launched}, status=201)
             except Exception as e:
                 logger.error("submit error: %s", e)
                 self._error(500, str(e))

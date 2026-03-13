@@ -433,30 +433,47 @@ cat > "$INSTALL_DIR/scripts/submit-task.sh" <<EOF
 #!/usr/bin/env bash
 # タスクを投入するサンプルスクリプト
 # 使い方:
-#   submit-task.sh "要件テキスト" [投稿者名] [リポジトリパス]
+#   submit-task.sh [オプション] "要件テキスト"
+#
+# オプション:
+#   --by NAME          投稿者名 (既定: \$USER)
+#   --repo PATH        作業リポジトリパス (省略可)
+#   --local            ローカルモード: このサーバー上で即座に実行
+#   -h, --help         このヘルプを表示
 #
 # 例:
 #   submit-task.sh "README を更新して"
-#   submit-task.sh "バグを直して" alice
-#   submit-task.sh "機能を追加して" alice /path/to/repo
+#   submit-task.sh --local "バグを直して"
+#   submit-task.sh --local --repo /path/to/repo "機能を追加して"
 PORT=$PORT
-REQUIREMENT="\${1:?\$0 '要件テキスト' [投稿者名] [リポジトリパス]}"
-BY="\${2:-\$USER}"
-REPO_PATH="\${3:-}"
 
-if [[ -n "\$REPO_PATH" ]]; then
-    BODY=\$(python3 -c "
-import json, sys
-req, by, rp = sys.argv[1], sys.argv[2], sys.argv[3]
-print(json.dumps({'requirement': req, 'by': by, 'repo_path': rp}))
-" "\$REQUIREMENT" "\$BY" "\$REPO_PATH")
-else
-    BODY=\$(python3 -c "
-import json, sys
-req, by = sys.argv[1], sys.argv[2]
-print(json.dumps({'requirement': req, 'by': by}))
-" "\$REQUIREMENT" "\$BY")
+BY="\$USER"
+REPO_PATH=""
+MODE=""
+REQUIREMENT=""
+
+while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+        --by)   BY="\$2";        shift 2 ;;
+        --repo) REPO_PATH="\$2"; shift 2 ;;
+        --local) MODE="local";  shift   ;;
+        -h|--help) sed -n '/^# /p' "\$0" | sed 's/^# //'; exit 0 ;;
+        *) REQUIREMENT="\$1"; shift ;;
+    esac
+done
+
+if [[ -z "\$REQUIREMENT" ]]; then
+    echo "使い方: \$0 [--local] [--by NAME] [--repo PATH] '要件テキスト'" >&2
+    exit 1
 fi
+
+BODY=\$(python3 -c "
+import json, sys
+d = {'requirement': sys.argv[1], 'by': sys.argv[2]}
+if sys.argv[3]: d['repo_path'] = sys.argv[3]
+if sys.argv[4]: d['mode'] = sys.argv[4]
+print(json.dumps(d))
+" "\$REQUIREMENT" "\$BY" "\$REPO_PATH" "\$MODE")
 
 curl -X POST "http://127.0.0.1:\$PORT/tasks" \\
     -H "Content-Type: application/json" \\
@@ -604,7 +621,8 @@ echo "    起動 (手動)    : $INSTALL_DIR/scripts/start.sh"
 echo "    起動 (BG)      : $INSTALL_DIR/scripts/start-daemon.sh"
 echo "    停止           : $INSTALL_DIR/scripts/stop.sh"
 echo "    状態確認       : $INSTALL_DIR/scripts/status.sh"
-echo "    タスク投入     : $INSTALL_DIR/scripts/submit-task.sh '要件テキスト' [投稿者] [/path/to/repo]"
+echo "    タスク投入     : $INSTALL_DIR/scripts/submit-task.sh '要件テキスト'"
+echo "    ローカル実行   : $INSTALL_DIR/scripts/submit-task.sh --local '要件テキスト'"
 echo ""
 
 if [[ "$NO_SERVICE" == "false" ]]; then

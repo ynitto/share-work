@@ -153,6 +153,7 @@ class GitClient:
         priority: str = "normal",
         depends_on: Optional[list[str]] = None,
         repo_path: Optional[str] = None,
+        mode: Optional[str] = None,
     ) -> TaskMeta:
         """Create a new task directory and push to remote."""
         task_id = generate_task_id()
@@ -168,6 +169,7 @@ class GitClient:
             priority=Priority(priority),
             depends_on=depends_on or [],
             repo_path=repo_path,
+            mode=mode,
         )
         if resources:
             meta.resources = ResourceRequirements.from_dict(resources)
