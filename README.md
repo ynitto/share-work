@@ -1,0 +1,336 @@
+# share-work
+
+Git をタスクバスとして使う、分散 AI エージェントタスク管理システムです。
+
+HTTP API に自然文で要件を投げると、バックグラウンドで動く AI エージェント (Claude Code / GitHub Copilot / Amazon Q) が自律的にタスクを引き受けて成果物を生成します。
+
+```
+発注者
+  │  POST /tasks  {"requirement": "Pythonで素数判定関数を実装して"}
+  ▼
+┌─────────────────────────────────────────┐
+│  TaskServer                             │
+│  ┌──────────┐  ┌────────────────────┐  │
+│  │ HTTP API │  │ Controller         │  │
+│  │ :8080    │  │ (タスク分解/監視)  │  │
+│  └──────────┘  └────────────────────┘  │
+│               ┌────────────────────┐   │
+│               │ Worker             │   │
+│               │ (タスク取得/実行)  │   │
+│               └─────────┬──────────┘   │
+└─────────────────────────┼─────────────┘
+                          │ subprocess
+                    ┌─────▼──────┐
+                    │  AI エージェント CLI  │
+                    │  (claude / gh / q)   │
+                    └─────┬──────┘
+               ┌──────────▼──────────┐
+               │  Git リポジトリ      │
+               │  tasks/<id>/        │  ← タスクバス
+               │  collected_artifacts/│  ← 成果物
+               └─────────────────────┘
+```
+
+## 必要な環境
+
+| 要件 | バージョン |
+|------|-----------|
+| Python | 3.10 以上 |
+| Git | 2.x |
+| AI エージェント CLI | 下記参照 |
+
+**AI エージェント CLI (いずれか1つ)**
+
+| エージェント | CLI | インストール |
+|------------|-----|------------|
+| Claude Code | `claude` | [Claude Code](https://github.com/anthropics/claude-code) |
+| GitHub Copilot | `gh` + Copilot 拡張 | `gh extension install github/gh-copilot` |
+| Amazon Q | `q` | [Amazon Q CLI](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-installing.html) |
+
+---
+
+## クイックスタート (Windows)
+
+### インストール
+
+PowerShell を開き、リポジトリのルートで実行します。
+
+```powershell
+# デフォルト設定でインストール (Claude, port 8080)
+.\install.ps1
+
+# GitHub Copilot を使う場合
+.\install.ps1 -AgentType copilot
+
+# Amazon Q を使う場合
+.\install.ps1 -AgentType amazon-q
+
+# ポートやインストール先を変える場合
+.\install.ps1 -Port 9090 -InstallDir D:\tools\share-work
+
+# タスクスケジューラへの登録をスキップする場合
+.\install.ps1 -NoService
+```
+
+インストーラーが行うこと:
+
+1. Python / Git / エージェント CLI の存在確認
+2. `%USERPROFILE%\share-work` にファイルをコピー
+3. タスクバス用ローカル bare Git リポジトリ (`share-work-tasks.git`) を作成
+4. Python 仮想環境 (`.venv`) を作成して依存パッケージをインストール
+5. `config/server.yaml` を自動生成
+6. `launch.pyw` (コンソールなしデーモン起動スクリプト) を生成
+7. 管理スクリプト (`scripts/*.ps1`) を生成
+8. Windows タスクスケジューラにログオン時自動起動タスクを登録
+
+### サーバーの管理
+
+```powershell
+# バックグラウンド起動
+powershell %USERPROFILE%\share-work\scripts\start-daemon.ps1
+
+# 状態確認 (プロセス / ヘルスチェック / ログ末尾)
+powershell %USERPROFILE%\share-work\scripts\status.ps1
+
+# 停止
+powershell %USERPROFILE%\share-work\scripts\stop.ps1
+
+# フォアグラウンド起動 (デバッグ用)
+powershell %USERPROFILE%\share-work\scripts\start.ps1
+```
+
+---
+
+## クイックスタート (手動 / Linux・macOS)
+
+```bash
+# 1. 依存パッケージのインストール
+pip install -r requirements.txt
+
+# 2. タスクバス用 Git リポジトリの準備
+git init --bare ~/share-work-tasks.git
+git init
+git remote add origin ~/share-work-tasks.git
+git add . && git commit -m "init"
+git push -u origin main
+
+# 3. サーバー起動
+python src/server.py --config config/server.yaml
+```
+
+---
+
+## タスクの投入と確認
+
+### タスクを投入する
+
+```bash
+curl -X POST http://localhost:8080/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"requirement": "Pythonで素数判定関数を実装してテストも書いて", "by": "alice"}'
+```
+
+```json
+{"task_ids": ["task-20260313-a3f9x2"]}
+```
+
+### タスク一覧を確認する
+
+```bash
+# 全タスク
+curl http://localhost:8080/tasks
+
+# ステータスで絞り込み
+curl "http://localhost:8080/tasks?status=open,in_progress"
+```
+
+### 特定タスクの詳細を確認する
+
+```bash
+curl http://localhost:8080/tasks/task-20260313-a3f9x2
+```
+
+### タスクをキャンセルする
+
+```bash
+curl -X DELETE http://localhost:8080/tasks/task-20260313-a3f9x2
+```
+
+### Windows から PowerShell でタスクを投入する
+
+```powershell
+powershell %USERPROFILE%\share-work\scripts\submit-task.ps1 `
+  -Requirement "Pythonで素数判定関数を実装してテストも書いて"
+```
+
+---
+
+## API リファレンス
+
+| メソッド | パス | 説明 |
+|---------|------|------|
+| `POST` | `/tasks` | タスクを投入 |
+| `GET` | `/tasks` | タスク一覧 (`?status=open,claimed,...` で絞り込み可) |
+| `GET` | `/tasks/{id}` | タスク詳細 |
+| `DELETE` | `/tasks/{id}` | タスクのキャンセル |
+| `GET` | `/workers` | ワーカー状態一覧 |
+| `GET` | `/health` | ヘルスチェック |
+| `GET` | `/metrics` | Prometheus 形式メトリクス |
+
+**POST /tasks リクエストボディ**
+
+```json
+{
+  "requirement": "自然文で書いた要件 (必須)",
+  "by": "投稿者名 (省略可)"
+}
+```
+
+**タスクステータスの遷移**
+
+```
+open → claimed → in_progress → done
+                             → failed
+       (タイムアウト時は open に差し戻し)
+```
+
+---
+
+## 設定ファイル
+
+`config/server.yaml` で動作を調整できます。
+
+```yaml
+server:
+  host: "127.0.0.1"   # バインドアドレス
+  port: 8080           # ポート番号
+
+gitlab:
+  repo_path: "."       # タスクバス Git リポジトリのパス
+  remote: "origin"
+  branch: "main"
+
+controller:
+  interval: 60                        # 監視ループの間隔 (秒)
+  decompose_model: "claude-sonnet-4-6" # タスク分解に使うモデル
+  decompose_binary: "claude"          # タスク分解に使う CLI バイナリ
+  timeouts:
+    claim_ttl: 300                    # claimed 状態のタイムアウト (秒)
+    execution_ttl: 3600               # in_progress 状態のタイムアウト (秒)
+  cleanup:
+    enabled: true
+    keep_failed_tasks: true
+    artifacts_dir: "./collected_artifacts"
+
+worker:
+  id: "worker-node1"
+  interval: 30                        # タスクポーリング間隔 (秒)
+  max_concurrent_tasks: 3             # 同時実行タスク数の上限
+  capabilities:
+    - general
+    - code-generation
+    - documentation
+  agent:
+    type: "claude"                    # エージェント種別 (下記参照)
+    model: "claude-sonnet-4-6"        # モデル名 (Claude のみ)
+    timeout: 3600                     # エージェント実行タイムアウト (秒)
+    sandbox: true                     # サンドボックスモード (Claude のみ)
+    # suggestion_type: "shell"        # GitHub Copilot のみ: shell | git | gh
+  resources:
+    has_gpu: false
+```
+
+### エージェント種別 (`agent.type`)
+
+| 値 | エイリアス | 使用 CLI | 備考 |
+|----|-----------|---------|------|
+| `claude` | — | `claude --print` | デフォルト。汎用コーディングエージェント |
+| `copilot` | `github-copilot`, `gh-copilot` | `gh copilot suggest` | シェルコマンド提案特化 |
+| `amazon-q` | `amazonq`, `q` | `q chat` (stdin) | Amazon Q Developer |
+
+---
+
+## ディレクトリ構成
+
+```
+share-work/
+├── src/
+│   ├── server.py       # 統合HTTPサーバー (メインエントリポイント)
+│   ├── controller.py   # タスク分解・監視・成果物収集
+│   ├── worker.py       # タスク取得・実行管理
+│   ├── agent.py        # AI エージェント CLI ラッパー
+│   ├── git_client.py   # Git 操作・楽観的ロック
+│   └── models.py       # データモデル
+├── config/
+│   └── server.yaml     # サーバー設定
+├── tasks/              # タスクキュー (Git 管理)
+│   └── <task-id>/
+│       ├── meta.yaml         # ステータス・優先度・リソース要件
+│       ├── requirements.txt  # タスク要件 (自然文)
+│       ├── workplan.md       # 実行計画
+│       └── artifacts/        # 成果物
+│           ├── result.md          # メイン成果物 (必須)
+│           └── agent_stdout.txt   # エージェントログ
+├── workers/            # ワーカー状態 (Git 管理)
+├── collected_artifacts/ # 完了タスクの成果物アーカイブ
+├── logs/               # サーバーログ
+├── requirements.txt
+└── install.ps1         # Windows インストーラー
+```
+
+---
+
+## トラブルシューティング
+
+### サーバーが起動しない
+
+```powershell
+# ログを確認する
+Get-Content %USERPROFILE%\share-work\logs\server.log -Tail 50
+Get-Content %USERPROFILE%\share-work\logs\server_error.log -Tail 20
+```
+
+### ポートが使用中
+
+```powershell
+# 使用中のポートを確認
+netstat -ano | findstr :8080
+```
+
+`config/server.yaml` の `server.port` を変更して再起動してください。
+
+### タスクが `claimed` のまま進まない
+
+Worker がクラッシュした場合、`controller.timeouts.claim_ttl` (既定 300 秒) 経過後に自動で `open` に差し戻されます。
+
+### エージェント CLI が見つからない
+
+```powershell
+# 確認
+where.exe claude   # または gh / q
+```
+
+PATH が通っていない場合は `config/server.yaml` の `agent.binary` にフルパスを指定してください。
+
+```yaml
+agent:
+  type: "claude"
+  binary: "C:/Users/yourname/AppData/Local/..../claude.exe"
+```
+
+### アンインストール
+
+```powershell
+# タスクスケジューラのタスクを削除
+Unregister-ScheduledTask -TaskName "share-work-server" -Confirm:$false
+
+# ファイルを削除
+Remove-Item -Recurse -Force %USERPROFILE%\share-work
+Remove-Item -Recurse -Force %USERPROFILE%\share-work-tasks.git
+```
+
+---
+
+## ライセンス
+
+MIT
