@@ -103,11 +103,24 @@ done
 command -v git &>/dev/null || fail "Git が見つかりません。https://git-scm.com/ からインストールしてください。"
 ok "Git 検出: $(git --version)"
 
-# エージェント CLI (警告のみ)
+# エージェント CLI の検出 (フルパスをコンフィグに書き込むために保存)
+# デーモン起動時は PATH が異なる場合があるため、インストール時のフルパスを使う
+_detect_cmd() {
+    local cmd="$1"; local fallback="$2"
+    local found
+    found=$(command -v "$cmd" 2>/dev/null || true)
+    if [[ -n "$found" ]]; then
+        ok "${cmd} 検出: $found"
+        echo "$found"
+    else
+        warn "${cmd} コマンドが見つかりません。後でインストールしてください。"
+        echo "$fallback"
+    fi
+}
 case "$AGENT_TYPE" in
-    claude)   command -v claude &>/dev/null || warn "claude コマンドが見つかりません。後でインストールしてください。" ;;
-    copilot)  command -v gh     &>/dev/null || warn "gh コマンドが見つかりません (GitHub CLI)。後でインストールしてください。" ;;
-    amazon-q) command -v q      &>/dev/null || warn "q コマンドが見つかりません (Amazon Q CLI)。後でインストールしてください。" ;;
+    claude)   AGENT_BINARY=$(_detect_cmd claude   claude)   ;;
+    copilot)  AGENT_BINARY=$(_detect_cmd gh       gh)       ;;
+    amazon-q) AGENT_BINARY=$(_detect_cmd q        q)        ;;
     kiro)
         KIRO_CMD=$(command -v kiro-cli 2>/dev/null || command -v kiro 2>/dev/null || true)
         if [[ -z "$KIRO_CMD" ]]; then
@@ -116,6 +129,7 @@ case "$AGENT_TYPE" in
         else
             ok "kiro CLI 検出: $KIRO_CMD"
         fi
+        AGENT_BINARY="$KIRO_CMD"
         ;;
 esac
 
@@ -215,13 +229,9 @@ step "設定ファイルの生成"
 CONFIG_PATH="$INSTALL_DIR/config/server.yaml"
 if [[ ! -f "$CONFIG_PATH" ]]; then
     WORKER_ID="worker-$(hostname -s 2>/dev/null || hostname)"
-    # kiro の場合はインストール時に検出したフルパスをコンフィグに書き込む。
+    # インストール時に検出したフルパスをコンフィグに書き込む。
     # これにより、デーモン起動時に PATH が異なる環境でも確実に実行できる。
-    if [[ "$AGENT_TYPE" == "kiro" && -n "${KIRO_CMD:-}" ]]; then
-        AGENT_BINARY_LINE="    binary: \"$KIRO_CMD\""
-    else
-        AGENT_BINARY_LINE=""
-    fi
+    AGENT_BINARY_LINE="    binary: \"$AGENT_BINARY\""
     cat > "$CONFIG_PATH" <<EOF
 # share-work サーバー設定
 # install.sh によって生成 ($(date +"%Y-%m-%d %H:%M"))
