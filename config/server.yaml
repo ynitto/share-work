@@ -4,6 +4,13 @@ server:
   host: "0.0.0.0"
   port: 8080
 
+logging:
+  enabled: true
+  file: "logs/server.log"   # log file path (relative to working directory)
+  when: "midnight"          # rotation trigger: "midnight" | "h" (hourly) | "d" (daily)
+  interval: 1               # rotation interval (e.g. 1 = every midnight)
+  backup_count: 7           # number of rotated files to keep; older ones are deleted
+
 gitlab:
   repo_path: "."
   remote: "origin"

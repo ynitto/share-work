@@ -502,6 +502,34 @@ def start(config: dict) -> None:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+def _setup_file_logging(log_cfg: dict) -> None:
+    """Attach a rotating file handler to the root logger based on config."""
+    import logging.handlers
+
+    log_path = Path(log_cfg.get("file", "logs/server.log"))
+    backup_count = int(log_cfg.get("backup_count", 7))
+    when = log_cfg.get("when", "midnight")      # "midnight" | "h" | "d" | "w0"–"w6"
+    interval = int(log_cfg.get("interval", 1))
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
+    handler = logging.handlers.TimedRotatingFileHandler(
+        filename=log_path,
+        when=when,
+        interval=interval,
+        backupCount=backup_count,
+        encoding="utf-8",
+        utc=False,
+    )
+    handler.setFormatter(fmt)
+    logging.getLogger().addHandler(handler)
+    logger.info(
+        "File logging: %s (rotate=%s/%d, keep=%d days)",
+        log_path, when, interval, backup_count,
+    )
+
+
 def main() -> None:
     import argparse
 
@@ -529,6 +557,10 @@ def main() -> None:
         cfg.setdefault("server", {})["host"] = args.host
     if args.port:
         cfg.setdefault("server", {})["port"] = args.port
+
+    log_cfg = cfg.get("logging", {})
+    if log_cfg.get("enabled", True):
+        _setup_file_logging(log_cfg)
 
     start(cfg)
 
