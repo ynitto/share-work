@@ -1,5 +1,5 @@
 worker_id: worker-node1
-last_heartbeat: '2026-03-14T00:59:20Z'
+last_heartbeat: '2026-03-14T01:00:22Z'
 status: idle
 capabilities:
 - general
@@ -8,9 +8,9 @@ capabilities:
 current_tasks: []
 resources:
   cpu_total: 10
-  cpu_available: 8
+  cpu_available: 9
   memory_total: 16384
-  memory_available: 7158
+  memory_available: 6569
   disk_total: 233752
-  disk_available: 123826
+  disk_available: 123828
   has_gpu: false
