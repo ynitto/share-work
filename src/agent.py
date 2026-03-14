@@ -307,7 +307,7 @@ class KiroAgentRunner(AgentRunner):
 
     def __init__(
         self,
-        binary: str = "kiro",
+        binary: str = "kiro-cli",
         timeout: int = 3600,
         **kwargs,
     ):
@@ -345,7 +345,7 @@ _DEFAULT_BINARY: dict[type[AgentRunner], str] = {
     ClaudeAgentRunner: "claude",
     CopilotAgentRunner: "gh",
     AmazonQAgentRunner: "q",
-    KiroAgentRunner: "kiro",
+    KiroAgentRunner: "kiro-cli",
 }
 
 
