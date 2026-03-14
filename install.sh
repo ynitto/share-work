@@ -109,8 +109,13 @@ case "$AGENT_TYPE" in
     copilot)  command -v gh     &>/dev/null || warn "gh コマンドが見つかりません (GitHub CLI)。後でインストールしてください。" ;;
     amazon-q) command -v q      &>/dev/null || warn "q コマンドが見つかりません (Amazon Q CLI)。後でインストールしてください。" ;;
     kiro)
-        command -v kiro-cli &>/dev/null || command -v kiro &>/dev/null || \
+        KIRO_CMD=$(command -v kiro-cli 2>/dev/null || command -v kiro 2>/dev/null || true)
+        if [[ -z "$KIRO_CMD" ]]; then
             warn "kiro/kiro-cli コマンドが見つかりません。後でインストールしてください。"
+            KIRO_CMD="kiro-cli"
+        else
+            ok "kiro CLI 検出: $KIRO_CMD"
+        fi
         ;;
 esac
 
@@ -210,6 +215,13 @@ step "設定ファイルの生成"
 CONFIG_PATH="$INSTALL_DIR/config/server.yaml"
 if [[ ! -f "$CONFIG_PATH" ]]; then
     WORKER_ID="worker-$(hostname -s 2>/dev/null || hostname)"
+    # kiro の場合はインストール時に検出したフルパスをコンフィグに書き込む。
+    # これにより、デーモン起動時に PATH が異なる環境でも確実に実行できる。
+    if [[ "$AGENT_TYPE" == "kiro" && -n "${KIRO_CMD:-}" ]]; then
+        AGENT_BINARY_LINE="    binary: \"$KIRO_CMD\""
+    else
+        AGENT_BINARY_LINE=""
+    fi
     cat > "$CONFIG_PATH" <<EOF
 # share-work サーバー設定
 # install.sh によって生成 ($(date +"%Y-%m-%d %H:%M"))
@@ -246,6 +258,7 @@ worker:
     - documentation
   agent:
     type: "$AGENT_TYPE"
+$AGENT_BINARY_LINE
     model: "$AGENT_MODEL"
     timeout: 3600
     sandbox: true
