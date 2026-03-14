@@ -35,7 +35,7 @@
 
   /* ── Cards ── */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px; }
   .card-header h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
   .card-body { padding: 16px; }
 
@@ -68,14 +68,17 @@
   .task-id { color: var(--accent); font-size: 11px; cursor: pointer; }
   .task-id:hover { text-decoration: underline; }
   td.truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .action-group { display: flex; gap: 4px; flex-wrap: wrap; }
 
   /* ── Buttons ── */
-  btn, .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); font-family: var(--font); font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); font-family: var(--font); font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s; }
   .btn:hover { background: rgba(255,255,255,.06); border-color: var(--accent); }
   .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
   .btn-danger { border-color: var(--danger); color: var(--danger); }
   .btn-danger:hover { background: rgba(224,82,82,.1); }
+  .btn-log { border-color: var(--warn); color: var(--warn); }
+  .btn-log:hover { background: rgba(224,169,82,.1); }
   .btn-sm { padding: 3px 10px; font-size: 11px; }
 
   /* ── Filter pills ── */
@@ -94,13 +97,34 @@
   /* ── Detail modal ── */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
-  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: min(680px, 95vw); max-height: 85vh; overflow-y: auto; }
-  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
-  .modal-header h3 { font-size: 14px; }
-  .modal-body { padding: 18px; }
-  .close-btn { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: min(720px, 95vw); max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); gap: 10px; }
+  .modal-header h3 { font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal-header-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .modal-body { padding: 18px; flex: 1; overflow-y: auto; }
+  .modal-tabs { display: flex; gap: 2px; padding: 10px 18px 0; border-bottom: 1px solid var(--border); }
+  .modal-tab { padding: 6px 14px; font-size: 12px; cursor: pointer; border-radius: 4px 4px 0 0; color: var(--text-dim); border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; }
+  .modal-tab.active { color: var(--text); background: var(--surface); border-color: var(--border); }
+  .modal-tab:hover:not(.active) { color: var(--text); }
+  .close-btn { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1; flex-shrink: 0; }
   .close-btn:hover { color: var(--text); }
   pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+
+  /* ── Log panel (slide-up drawer) ── */
+  #log-drawer { position: fixed; bottom: 0; left: 0; right: 0; height: 380px; background: var(--surface); border-top: 2px solid var(--border); z-index: 50; display: flex; flex-direction: column; transform: translateY(100%); transition: transform .25s ease; }
+  #log-drawer.open { transform: translateY(0); }
+  .log-drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--border); gap: 10px; flex-shrink: 0; }
+  .log-drawer-title { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; }
+  .log-drawer-actions { display: flex; gap: 8px; align-items: center; }
+  #log-content { flex: 1; overflow-y: auto; padding: 10px 14px; font-size: 11px; line-height: 1.6; }
+  .log-line { white-space: pre-wrap; word-break: break-word; padding: 1px 0; }
+  .log-line.INFO    { color: var(--text-dim); }
+  .log-line.WARNING { color: var(--warn); }
+  .log-line.ERROR   { color: var(--danger); }
+  .log-line.CRITICAL{ color: var(--danger); font-weight: 700; }
+  .log-empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .log-count { font-size: 11px; color: var(--text-dim); }
+  #log-tail-toggle { font-size: 11px; }
 
   /* ── Toast ── */
   #toast { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
@@ -132,6 +156,7 @@
   <div class="header-right">
     <span class="auto-label" id="last-updated">-</span>
     <button class="btn btn-sm refresh-btn" onclick="refreshAll()" title="Refresh">↻</button>
+    <button class="btn btn-sm btn-log" onclick="toggleLogDrawer()">Logs</button>
     <button class="btn btn-sm btn-primary" onclick="openSubmitModal()">+ New Task</button>
   </div>
 </header>
@@ -141,7 +166,6 @@
   <div class="card" id="health-bar">
     <div class="card-header">
       <h2>System Health</h2>
-      <span id="health-status-dot"></span>
     </div>
     <div class="card-body">
       <div class="health-grid" id="health-grid">
@@ -227,15 +251,37 @@
   </div>
 </main>
 
-<!-- Task detail modal -->
+<!-- Task detail modal (tabs: Detail | Logs) -->
 <div class="modal-overlay" id="detail-modal" onclick="closeDetailIfBg(event)">
   <div class="modal">
     <div class="modal-header">
       <h3 id="modal-title">Task Detail</h3>
-      <button class="close-btn" onclick="closeDetail()">×</button>
+      <div class="modal-header-actions">
+        <button class="close-btn" onclick="closeDetail()">×</button>
+      </div>
+    </div>
+    <div class="modal-tabs">
+      <div class="modal-tab active" data-tab="detail" onclick="switchTab('detail')">Detail</div>
+      <div class="modal-tab" data-tab="logs" onclick="switchTab('logs')">Logs</div>
     </div>
     <div class="modal-body" id="modal-body"></div>
   </div>
+</div>
+
+<!-- Log drawer (server logs) -->
+<div id="log-drawer">
+  <div class="log-drawer-header">
+    <span class="log-drawer-title" id="log-drawer-title">Server Logs</span>
+    <div class="log-drawer-actions">
+      <span class="log-count" id="log-count"></span>
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-dim);cursor:pointer;">
+        <input type="checkbox" id="log-tail-toggle" checked> Auto-scroll
+      </label>
+      <button class="btn btn-sm" onclick="loadServerLogs()">↻</button>
+      <button class="btn btn-sm" onclick="closeLogDrawer()">×</button>
+    </div>
+  </div>
+  <div id="log-content"><div class="log-empty">Click "Logs" to load server logs</div></div>
 </div>
 
 <!-- Toast container -->
@@ -245,7 +291,12 @@
 // ── State ──────────────────────────────────────────────────────────────────
 let activeFilter = '';
 let autoRefreshTimer = null;
+let logRefreshTimer = null;
 const AUTO_REFRESH_MS = 10000;
+const LOG_REFRESH_MS  = 5000;
+
+let currentTaskId = null;   // task open in detail modal
+let currentTab    = 'detail';
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -311,7 +362,12 @@ async function loadTasks() {
         <td>${escHtml(t.requested_by || '—')}</td>
         <td>${escHtml(t.assigned_to || '—')}</td>
         <td style="white-space:nowrap;font-size:11px">${fmtTime(t.created_at)}</td>
-        <td>${canCancel(t.status) ? `<button class="btn btn-danger btn-sm" onclick="cancelTask('${escHtml(t.task_id)}')">Cancel</button>` : ''}</td>
+        <td>
+          <div class="action-group">
+            <button class="btn btn-log btn-sm" onclick="showDetail('${escHtml(t.task_id)}','logs')">Logs</button>
+            ${canCancel(t.status) ? `<button class="btn btn-danger btn-sm" onclick="cancelTask('${escHtml(t.task_id)}')">Cancel</button>` : ''}
+          </div>
+        </td>
       </tr>
     `).join('');
   } catch(e) {
@@ -334,23 +390,59 @@ async function cancelTask(id) {
   }
 }
 
-// ── Task detail ────────────────────────────────────────────────────────────
-async function showDetail(id) {
-  const modal = document.getElementById('detail-modal');
-  const body = document.getElementById('modal-body');
+// ── Task detail modal ──────────────────────────────────────────────────────
+async function showDetail(id, tab = 'detail') {
+  currentTaskId = id;
   document.getElementById('modal-title').textContent = id;
+  document.getElementById('detail-modal').classList.add('open');
+  switchTab(tab);
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.modal-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  if (tab === 'detail') {
+    loadTaskDetail(currentTaskId);
+  } else {
+    loadTaskLogs(currentTaskId);
+  }
+}
+
+async function loadTaskDetail(id) {
+  const body = document.getElementById('modal-body');
   body.innerHTML = '<div class="empty"><span class="spin">↻</span> Loading…</div>';
-  modal.classList.add('open');
   try {
     const t = await api(`/tasks/${id}`);
     body.innerHTML = `<pre>${escHtml(JSON.stringify(t, null, 2))}</pre>`;
   } catch(e) {
-    body.innerHTML = `<div style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`;
+    body.innerHTML = `<div style="color:var(--danger);padding:16px">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+async function loadTaskLogs(id) {
+  const body = document.getElementById('modal-body');
+  body.innerHTML = '<div class="empty"><span class="spin">↻</span> Loading logs…</div>';
+  try {
+    const data = await api(`/tasks/${id}/logs`);
+    const lines = data.lines || [];
+    if (!lines.length) {
+      body.innerHTML = '<div class="empty">No agent logs yet for this task.</div>';
+      return;
+    }
+    const html = lines.map(l => `<div class="log-line">${escHtml(l)}</div>`).join('');
+    body.innerHTML = `<pre style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;line-height:1.7;white-space:pre-wrap;word-break:break-word;">${lines.map(l => escHtml(l)).join('\n')}</pre>`;
+    body.scrollTop = body.scrollHeight;
+  } catch(e) {
+    const msg = e.message.includes('404') ? 'No agent logs for this task yet.' : `Error: ${e.message}`;
+    body.innerHTML = `<div class="empty" style="color:var(--text-dim)">${escHtml(msg)}</div>`;
   }
 }
 
 function closeDetail() {
   document.getElementById('detail-modal').classList.remove('open');
+  currentTaskId = null;
 }
 
 function closeDetailIfBg(e) {
@@ -369,7 +461,6 @@ async function loadWorkers() {
     el.innerHTML = workers.map(w => {
       const r = w.resources || {};
       const cpuPct = r.cpu_total ? Math.round((1 - (r.cpu_available || 0) / r.cpu_total) * 100) : 0;
-      const memPct = r.memory_total ? Math.round((1 - (r.memory_available || 0) / r.memory_total) * 100) : 0;
       return `
         <div class="worker-item">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -419,6 +510,59 @@ async function quickSubmit(e) {
 function openSubmitModal() {
   document.getElementById('q-req').focus();
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+}
+
+// ── Server log drawer ──────────────────────────────────────────────────────
+let logDrawerOpen = false;
+
+function toggleLogDrawer() {
+  if (logDrawerOpen) {
+    closeLogDrawer();
+  } else {
+    openLogDrawer();
+  }
+}
+
+function openLogDrawer() {
+  logDrawerOpen = true;
+  document.getElementById('log-drawer').classList.add('open');
+  loadServerLogs();
+  if (logRefreshTimer) clearInterval(logRefreshTimer);
+  logRefreshTimer = setInterval(loadServerLogs, LOG_REFRESH_MS);
+}
+
+function closeLogDrawer() {
+  logDrawerOpen = false;
+  document.getElementById('log-drawer').classList.remove('open');
+  if (logRefreshTimer) { clearInterval(logRefreshTimer); logRefreshTimer = null; }
+}
+
+async function loadServerLogs() {
+  const el = document.getElementById('log-content');
+  try {
+    const data = await api('/logs?n=300');
+    const lines = data.lines || [];
+    document.getElementById('log-count').textContent = `${lines.length} lines`;
+    if (!lines.length) {
+      el.innerHTML = '<div class="log-empty">No log entries yet.</div>';
+      return;
+    }
+    el.innerHTML = lines.map(line => {
+      const level = detectLevel(line);
+      return `<div class="log-line ${level}">${escHtml(line)}</div>`;
+    }).join('');
+    if (document.getElementById('log-tail-toggle').checked) {
+      el.scrollTop = el.scrollHeight;
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="log-empty" style="color:var(--danger)">Error loading logs: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function detectLevel(line) {
+  if (/\bERROR\b|\bCRITICAL\b/.test(line)) return 'ERROR';
+  if (/\bWARNING\b|\bWARN\b/.test(line)) return 'WARNING';
+  return 'INFO';
 }
 
 // ── Filters ────────────────────────────────────────────────────────────────
