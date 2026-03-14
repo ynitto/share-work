@@ -151,7 +151,18 @@ class APIHandler(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?")[0].rstrip("/")
         qs = self._parse_qs()
 
-        if path == "/health":
+        if path in ("", "/"):
+            dashboard = Path(__file__).parent / "dashboard.html"
+            if dashboard.exists():
+                data = dashboard.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self._error(404, "dashboard.html not found")
+        elif path == "/health":
             self._json(self._health())
         elif path == "/metrics":
             self._text(self._metrics())
@@ -402,6 +413,7 @@ def start(config: dict) -> None:
         host if host != "0.0.0.0" else "localhost",
         port,
     )
+    logger.info("  GET  /             - dashboard UI")
     logger.info("  POST /tasks        - submit a task")
     logger.info("  GET  /tasks        - list tasks  (?status=open,claimed,...)")
     logger.info("  GET  /tasks/{id}   - task detail")
