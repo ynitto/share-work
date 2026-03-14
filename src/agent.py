@@ -315,7 +315,10 @@ class KiroAgentRunner(AgentRunner):
 
     def _build_command(self, prompt: str, output_dir: Path) -> tuple[list[str], Optional[str]]:
         cmd = list(self._binary)
-        if len(cmd) == 1:
+        # Add the "chat" subcommand if not already present.
+        # Checking by value (not by length) allows wrappers like "wsl kiro-cli"
+        # to work correctly: ["wsl", "kiro-cli"] → ["wsl", "kiro-cli", "chat", ...].
+        if "chat" not in cmd:
             cmd.append("chat")
         # Run in non-interactive mode so the agent can be driven from scripts.
         # Also allow any tool actions without requiring interactive approval.

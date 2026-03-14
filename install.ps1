@@ -21,7 +21,8 @@
     HTTP サーバーのポート番号 (既定: 8080)
 
 .PARAMETER AgentType
-    使用する AI エージェント CLI: claude | copilot | amazon-q (既定: claude)
+    使用する AI エージェント CLI: claude | copilot | amazon-q | kiro (既定: claude)
+    kiro は WSL (Windows Subsystem for Linux) 経由で実行されます。
 
 .PARAMETER AgentModel
     エージェントモデル名 (Claude 専用, 既定: claude-sonnet-4-6)
@@ -91,12 +92,48 @@ if (-not (Find-Command "git")) {
 }
 Write-OK "Git 検出: $(git --version)"
 
-# エージェント CLI の存在確認 (警告のみ)
+# エージェント CLI の検出 (フルパスをコンフィグに書き込むために保存)
+# デーモン起動時はタスクスケジューラの PATH が異なるため、フルパスを使う
+function Find-CommandPath {
+    param([string]$Name)
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source } else { return $null }
+}
+
+$agentBinary = $null
 switch ($AgentType) {
-    "claude"    { if (-not (Find-Command "claude")) { Write-Warn "claude コマンドが見つかりません。後でインストールしてください。" } }
-    "copilot"   { if (-not (Find-Command "gh"))     { Write-Warn "gh コマンドが見つかりません (GitHub CLI)。後でインストールしてください。" } }
-    "amazon-q"  { if (-not (Find-Command "q"))      { Write-Warn "q コマンドが見つかりません (Amazon Q CLI)。後でインストールしてください。" } }
-    "kiro"      { if (-not (Find-Command "kiro"))    { Write-Warn "kiro コマンドが見つかりません。後でインストールしてください。" } }
+    "claude" {
+        $p = Find-CommandPath "claude"
+        if ($p) { Write-OK "claude 検出: $p"; $agentBinary = $p }
+        else     { Write-Warn "claude コマンドが見つかりません。後でインストールしてください。"; $agentBinary = "claude" }
+    }
+    "copilot" {
+        $p = Find-CommandPath "gh"
+        if ($p) { Write-OK "gh 検出: $p"; $agentBinary = $p }
+        else     { Write-Warn "gh コマンドが見つかりません (GitHub CLI)。後でインストールしてください。"; $agentBinary = "gh" }
+    }
+    "amazon-q" {
+        $p = Find-CommandPath "q"
+        if ($p) { Write-OK "q 検出: $p"; $agentBinary = $p }
+        else     { Write-Warn "q コマンドが見つかりません (Amazon Q CLI)。後でインストールしてください。"; $agentBinary = "q" }
+    }
+    "kiro" {
+        # kiro CLI は WSL (Windows Subsystem for Linux) 経由で実行する
+        if (-not (Find-CommandPath "wsl")) {
+            Write-Fail "WSL が見つかりません。kiro を使用するには WSL をインストールしてください。`n  https://learn.microsoft.com/ja-jp/windows/wsl/install"
+        }
+        Write-OK "WSL 検出"
+
+        # WSL 内の kiro-cli パスを取得
+        $wslKiroPath = (wsl -- sh -c "command -v kiro-cli 2>/dev/null || command -v kiro 2>/dev/null" 2>$null).Trim()
+        if ($wslKiroPath) {
+            Write-OK "kiro CLI 検出 (WSL): $wslKiroPath"
+            $agentBinary = "wsl $wslKiroPath"
+        } else {
+            Write-Warn "WSL 内に kiro-cli / kiro が見つかりません。後でインストールしてください。"
+            $agentBinary = "wsl kiro-cli"
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -207,8 +244,11 @@ Write-Step "設定ファイルの生成"
 
 $configPath = "$InstallDir\config\server.yaml"
 if (-not (Test-Path $configPath)) {
-    $escapedDir = $InstallDir.Replace("\", "/")
+    $escapedDir  = $InstallDir.Replace("\", "/")
     $bareEscaped = $bareRepoDir.Replace("\", "/")
+    # エージェントバイナリのパスをコンフィグに書き込む
+    # タスクスケジューラ経由の起動では PATH が限られるため、フルパスが必要
+    $agentBinaryLine = "    binary: `"$agentBinary`""
     @"
 # share-work サーバー設定
 # install.ps1 によって生成 ($(Get-Date -Format "yyyy-MM-dd HH:mm"))
@@ -245,6 +285,7 @@ worker:
     - documentation
   agent:
     type: "$AgentType"
+$agentBinaryLine
     model: "$AgentModel"
     timeout: 3600
     sandbox: true
