@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence, Union
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +33,19 @@ class AgentRunner:
 
     def __init__(
         self,
-        binary: str,
+        binary: str | Sequence[str],
         model: str = "",
         timeout: int = 3600,
         sandbox: bool = True,
         max_tokens: int = 100000,
     ):
-        self.binary = binary
+        # Allow specifying a command line as a shell-like string (e.g. "kiro chat")
+        # or as a list of arguments.
+        if isinstance(binary, str):
+            self._binary = shlex.split(binary)
+        else:
+            self._binary = list(binary)
+
         self.model = model
         self.timeout = timeout
         self.sandbox = sandbox
@@ -94,8 +101,9 @@ class AgentRunner:
             self._write_error(output_dir, f"Agent timed out after {self.timeout} seconds")
             return False
         except FileNotFoundError:
-            logger.error("Agent binary not found: %s", self.binary)
-            self._write_error(output_dir, f"Agent binary not found: {self.binary}")
+            binary_repr = " ".join(self._binary)
+            logger.error("Agent binary not found: %s", binary_repr)
+            self._write_error(output_dir, f"Agent binary not found: {binary_repr}")
             return False
 
         stdout = result.stdout or ""
@@ -195,8 +203,7 @@ class ClaudeAgentRunner(AgentRunner):
         )
 
     def _build_command(self, prompt: str, output_dir: Path) -> tuple[list[str], Optional[str]]:
-        cmd = [
-            self.binary,
+        cmd = list(self._binary) + [
             "--print",
             "--model", self.model,
             "--max-turns", "50",
@@ -251,7 +258,7 @@ class CopilotAgentRunner(AgentRunner):
 
     def _build_command(self, prompt: str, output_dir: Path) -> tuple[list[str], Optional[str]]:
         return (
-            [self.binary, "copilot", "suggest", "-t", self.suggestion_type, prompt],
+            list(self._binary) + ["copilot", "suggest", "-t", self.suggestion_type, prompt],
             None,
         )
 
@@ -284,7 +291,36 @@ class AmazonQAgentRunner(AgentRunner):
 
     def _build_command(self, prompt: str, output_dir: Path) -> tuple[list[str], Optional[str]]:
         # Amazon Q reads from stdin when not attached to a terminal
-        return [self.binary, "chat"], prompt
+        return list(self._binary) + ["chat"], prompt
+
+
+# ---------------------------------------------------------------------------
+# Kiro CLI (generic)
+# ---------------------------------------------------------------------------
+
+class KiroAgentRunner(AgentRunner):
+    """Wraps the Kiro CLI.
+
+    The Kiro CLI is expected to accept input from stdin. If the configured
+    binary is just "kiro-cli", this runner defaults to invoking "kiro-cli chat".
+    """
+
+    def __init__(
+        self,
+        binary: str = "kiro-cli",
+        timeout: int = 3600,
+        **kwargs,
+    ):
+        super().__init__(binary=binary, timeout=timeout, **kwargs)
+
+    def _build_command(self, prompt: str, output_dir: Path) -> tuple[list[str], Optional[str]]:
+        cmd = list(self._binary)
+        if len(cmd) == 1:
+            cmd.append("chat")
+        # Run in non-interactive mode so the agent can be driven from scripts.
+        # Also allow any tool actions without requiring interactive approval.
+        cmd.extend(["--no-interactive", "--trust-all-tools"])
+        return cmd, prompt
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +336,8 @@ AGENT_REGISTRY: dict[str, type[AgentRunner]] = {
     "amazon-q": AmazonQAgentRunner,
     "amazonq": AmazonQAgentRunner,
     "q": AmazonQAgentRunner,
+    "kiro": KiroAgentRunner,
+    "kiro-chat": KiroAgentRunner,
 }
 
 #: Default binary name for each runner class.
@@ -307,6 +345,7 @@ _DEFAULT_BINARY: dict[type[AgentRunner], str] = {
     ClaudeAgentRunner: "claude",
     CopilotAgentRunner: "gh",
     AmazonQAgentRunner: "q",
+    KiroAgentRunner: "kiro-cli",
 }
 
 
@@ -322,7 +361,7 @@ def create_agent_runner(
 
     Args:
         agent_type:      One of ``"claude"``, ``"copilot"``/``"github-copilot"``,
-                         ``"amazon-q"``/``"q"``.
+                         ``"amazon-q"``/``"q"``, or ``"kiro"``.
         binary:          Override the default CLI binary path.
         model:           Model name (Claude only).
         timeout:         Subprocess timeout in seconds.

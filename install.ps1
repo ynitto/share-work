@@ -38,7 +38,7 @@
 param(
     [string] $InstallDir  = "$env:USERPROFILE\share-work",
     [int]    $Port        = 8080,
-    [ValidateSet("claude","copilot","amazon-q")]
+    [ValidateSet("claude","copilot","amazon-q","kiro")]
     [string] $AgentType   = "claude",
     [string] $AgentModel  = "claude-sonnet-4-6",
     [switch] $NoService
@@ -96,6 +96,7 @@ switch ($AgentType) {
     "claude"    { if (-not (Find-Command "claude")) { Write-Warn "claude コマンドが見つかりません。後でインストールしてください。" } }
     "copilot"   { if (-not (Find-Command "gh"))     { Write-Warn "gh コマンドが見つかりません (GitHub CLI)。後でインストールしてください。" } }
     "amazon-q"  { if (-not (Find-Command "q"))      { Write-Warn "q コマンドが見つかりません (Amazon Q CLI)。後でインストールしてください。" } }
+    "kiro"      { if (-not (Find-Command "kiro"))    { Write-Warn "kiro コマンドが見つかりません。後でインストールしてください。" } }
 }
 
 # ---------------------------------------------------------------------------

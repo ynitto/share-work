@@ -327,7 +327,22 @@ class APIHandler(http.server.BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 class TaskServer(http.server.ThreadingHTTPServer):
-    """HTTP server that also runs Controller and Worker in background threads."""
+    """HTTP server that also runs Controller and Worker in background threads.
+
+    The default Python HTTPServer does not set SO_REUSEADDR by default on macOS,
+    which can lead to "Address already in use" errors after a hard shutdown.
+    Setting ``allow_reuse_address = True`` allows the server to bind to the same
+    port more quickly when restarted.
+
+    We also set ``daemon_threads`` so that lingering request threads do not keep
+    the process alive once shutdown is initiated.
+    """
+
+    allow_reuse_address = True
+    # Some platforms also support SO_REUSEPORT; enable when available.
+    allow_reuse_port = True
+    # Serve requests in daemon threads so shutdown can complete cleanly.
+    daemon_threads = True
 
     controller: Controller
     worker: Worker
@@ -395,13 +410,33 @@ def start(config: dict) -> None:
     logger.info("  GET  /health       - health check")
     logger.info("  GET  /metrics      - Prometheus metrics")
 
+    # Ensure the server is shut down cleanly on SIGINT/SIGTERM.
+    def _signal_handler(signum, frame):
+        logger.info("Signal %s received: shutting down", signum)
+        ctrl._running = False
+        wkr._running = False
+        try:
+            server.shutdown()
+        except Exception:
+            pass
+
+    import signal  # local import to minimize global imports
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, _signal_handler)
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
+        # Ensure a clean shutdown even if serve_forever exits unexpectedly.
         ctrl._running = False
         wkr._running = False
+        try:
+            server.shutdown()
+        except Exception:
+            pass
         server.server_close()
 
 

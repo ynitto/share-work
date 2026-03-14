@@ -19,7 +19,7 @@
 ┌─────────────────────────────────┐
 │  TaskServer (src/server.py)     │
 │  ┌────────────┐  ┌────────────┐ │
-│  │ HTTP API   │  │Controller  │ │  ← background thread
+│  │ HTTP API   │  │ Controller │ │  ← background thread
 │  │ :8080      │  │ loop       │ │
 │  └────────────┘  └────────────┘ │
 │           ┌────────────┐        │
@@ -28,14 +28,14 @@
 │           └─────┬──────┘        │
 └─────────────────┼───────────────┘
                   │ subprocess
-              ┌───▼────┐
-              │  claude │  (CLI エージェント)
-              └─────────┘
+              ┌───▼──────┐
+              │ ai-agent │ (claude/gh/q/kiro CLI) 
+              └──────────┘
                   │
         ┌─────────▼─────────┐
-        │  Git リポジトリ    │  (タスクバス)
-        │  tasks/<id>/       │
-        │  workers/<id>/     │
+        │  Git リポジトリ     │  (タスクバス)
+        │  tasks/<id>/      │
+        │  workers/<id>/    │
         └───────────────────┘
 ```
 
@@ -127,7 +127,7 @@ curl http://localhost:8080/tasks/task-20260313-a3f9x2
 ### 3) 実行（AI エージェント呼び出し）
 
 1. `status: claimed` → `status: in_progress` に更新（開始タイムスタンプ記録）
-2. `requirements.txt` と `workplan.md` を読み込み、`claude` CLI を subprocess で呼び出し
+2. `requirements.txt` と `workplan.md` を読み込み、AI エージェント CLI（`claude` / `gh` / `q` / `kiro`）を subprocess で呼び出し
 3. エージェントは `artifacts/` ディレクトリに成果物を書き出し（`result.md` 必須）
 4. 実行完了後 `meta.yaml` を `status: done` に更新してプッシュ
 5. 失敗時は `status: failed`、`artifacts/error.log` にエラー詳細を残す
@@ -135,7 +135,7 @@ curl http://localhost:8080/tasks/task-20260313-a3f9x2
 #### AI エージェント呼び出し（実装）
 
 ```python
-# src/agent.py の AgentRunner が以下を実行
+# src/agent.py の AgentRunner が以下を実行（例: `claude`, `kiro`, `q` など）
 subprocess.run([
     "claude",
     "--print",
@@ -610,7 +610,7 @@ curl http://localhost:8080/health
 │   ├── server.py       # 統合 HTTP サーバ（メインエントリポイント）
 │   ├── controller.py   # Controller ロジック・タスク分解
 │   ├── worker.py       # Worker ロジック・タスク受注・実行
-│   ├── agent.py        # Claude CLI ラッパー（AgentRunner）
+│   ├── agent.py        # AI CLI ラッパー（AgentRunner）（claude / gh / q / kiro など）
 │   ├── git_client.py   # Git 操作クライアント（楽観的ロック）
 │   └── models.py       # データモデル（TaskMeta, WorkerState 等）
 ├── config/

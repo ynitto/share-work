@@ -12,7 +12,7 @@ gitlab:
 controller:
   interval: 60                          # seconds between each monitoring scan
   decompose_model: "claude-sonnet-4-6"  # model used for task decomposition
-  decompose_binary: "claude"            # CLI binary used for task decomposition (claude only)
+  decompose_binary: "kiro-cli"         # CLI binary used for task decomposition (claude/kiro)
   timeouts:
     claim_ttl: 300                      # seconds before claimed task is reopened
     execution_ttl: 3600                 # seconds before in_progress task times out
@@ -31,10 +31,10 @@ worker:
     - code-generation
     - documentation
   agent:
-    # Agent type: "claude" | "copilot" (GitHub Copilot) | "amazon-q"
-    type: "claude"
-    # Binary path override (optional; defaults to "claude", "gh", or "q" per type)
-    # binary: "claude"
+    # Agent type: "claude" | "copilot" (GitHub Copilot) | "amazon-q" | "kiro"
+    type: "kiro"
+    # Binary path override (optional; defaults to "claude", "gh", "q", or "kiro-cli" per type)
+    binary: "kiro-cli"
     model: "claude-sonnet-4-6"          # Model name (Claude only)
     timeout: 3600
     sandbox: true                       # Sandbox mode (Claude only)

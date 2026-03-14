@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -46,9 +47,15 @@ DEFAULT_CONFIG = {
 class TaskDecomposer:
     """Uses an AI model to decompose a natural-language requirement into tasks."""
 
-    def __init__(self, model: str = "claude-sonnet-4-6", binary: str = "claude"):
+    def __init__(self, model: str = "claude-sonnet-4-6", binary: Optional[str] = "claude"):
         self.model = model
-        self.binary = binary
+        # Allow passing a shell-style command (e.g. "kiro chat") or a list.
+        if binary is None:
+            self._binary = None
+        elif isinstance(binary, str):
+            self._binary = shlex.split(binary)
+        else:
+            self._binary = list(binary)
 
     def decompose(self, requirement: str, requested_by: str = "unknown") -> list[dict]:
         """
@@ -64,6 +71,8 @@ class TaskDecomposer:
             return self._fallback_decompose(requirement)
 
     def _ai_decompose(self, requirement: str, requested_by: str) -> list[dict]:
+        if self._binary is None:
+            raise RuntimeError("No binary configured for AI decomposition")
         prompt = f"""You are a task planner for a distributed AI agent system.
 Break down the following requirement into one or more concrete tasks.
 Return a JSON array. Each element must have:
@@ -77,14 +86,15 @@ Requirement: {requirement}
 
 Respond with ONLY the JSON array, no other text."""
 
+        cmd = list(self._binary) + ["--print", "--model", self.model, prompt]
         result = subprocess.run(
-            [self.binary, "--print", "--model", self.model, prompt],
+            cmd,
             capture_output=True,
             text=True,
             timeout=120,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"{self.binary} CLI error: {result.stderr}")
+            raise RuntimeError(f"{' '.join(self._binary)} CLI error: {result.stderr}")
 
         raw = result.stdout.strip()
         # Strip markdown code fences if present

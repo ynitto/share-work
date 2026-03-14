@@ -7,7 +7,7 @@
 # オプション:
 #   --install-dir DIR   インストール先 (既定: $HOME/share-work)
 #   --port PORT         HTTP サーバーポート番号 (既定: 8080)
-#   --agent-type TYPE   エージェント種別: claude | copilot | amazon-q (既定: claude)
+#   --agent-type TYPE   エージェント種別: claude | copilot | amazon-q | kiro (既定: claude)
 #   --agent-model MODEL モデル名 (Claude 専用, 既定: claude-sonnet-4-6)
 #   --no-service        systemd / launchd への登録をスキップ
 #   -h, --help          このヘルプを表示
@@ -48,8 +48,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$AGENT_TYPE" in
-    claude|copilot|amazon-q) ;;
-    *) echo "[ERROR] --agent-type は claude / copilot / amazon-q のいずれかを指定してください" >&2; exit 1 ;;
+    claude|copilot|amazon-q|kiro) ;;
+    *) echo "[ERROR] --agent-type は claude / copilot / amazon-q / kiro のいずれかを指定してください" >&2; exit 1 ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -108,6 +108,10 @@ case "$AGENT_TYPE" in
     claude)   command -v claude &>/dev/null || warn "claude コマンドが見つかりません。後でインストールしてください。" ;;
     copilot)  command -v gh     &>/dev/null || warn "gh コマンドが見つかりません (GitHub CLI)。後でインストールしてください。" ;;
     amazon-q) command -v q      &>/dev/null || warn "q コマンドが見つかりません (Amazon Q CLI)。後でインストールしてください。" ;;
+    kiro)
+        command -v kiro-cli &>/dev/null || command -v kiro &>/dev/null || \
+            warn "kiro/kiro-cli コマンドが見つかりません。後でインストールしてください。"
+        ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -279,7 +283,7 @@ INSTALL_DIR="$INSTALL_DIR"
 VENV_PY="$VENV_PY"
 LOG_DIR="$INSTALL_DIR/logs"
 PID_FILE="$INSTALL_DIR/share-work.pid"
-SCRIPT_EOF2
+EOF
 
 cat >> "$INSTALL_DIR/scripts/start-daemon.sh" <<'SCRIPT_EOF'
 

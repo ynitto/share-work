@@ -14,7 +14,7 @@ polling:
 
 execution:
   max_concurrent_tasks: 3
-  agent_binary: "claude"    # path or name of the CLI agent binary
+  agent_binary: "kiro-cli"    # path or name of the CLI agent binary
   agent_timeout: 3600       # seconds before the agent process is killed
   agent_model: "claude-sonnet-4-6"
   agent_sandbox: true       # pass --dangerously-skip-permissions when false
