@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import http.server
 import json
 import logging
@@ -26,6 +27,35 @@ from worker import Worker, DEFAULT_CONFIG as WORKER_DEFAULTS
 from models import TaskStatus
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# In-memory log buffer
+# ---------------------------------------------------------------------------
+
+class MemoryLogHandler(logging.Handler):
+    """Keeps the last *maxlen* formatted log records in a deque."""
+
+    def __init__(self, maxlen: int = 500) -> None:
+        super().__init__()
+        self._buf: collections.deque[str] = collections.deque(maxlen=maxlen)
+        self._lock = threading.Lock()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            with self._lock:
+                self._buf.append(msg)
+        except Exception:
+            self.handleError(record)
+
+    def get_lines(self, n: int = 200) -> list[str]:
+        with self._lock:
+            lines = list(self._buf)
+        return lines[-n:] if n < len(lines) else lines
+
+
+# Singleton handler installed by main(); also used when imported directly.
+_memory_handler = MemoryLogHandler(maxlen=500)
 
 # ---------------------------------------------------------------------------
 # Default config (controller + worker merged under one file)
@@ -151,7 +181,18 @@ class APIHandler(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?")[0].rstrip("/")
         qs = self._parse_qs()
 
-        if path == "/health":
+        if path in ("", "/"):
+            dashboard = Path(__file__).parent / "dashboard.html"
+            if dashboard.exists():
+                data = dashboard.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self._error(404, "dashboard.html not found")
+        elif path == "/health":
             self._json(self._health())
         elif path == "/metrics":
             self._text(self._metrics())
@@ -177,6 +218,20 @@ class APIHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/workers":
             states = self.server.controller.git.list_worker_states()
             self._json([s.to_dict() for s in states])
+        elif path == "/logs":
+            try:
+                n = int(qs.get("n", 200))
+            except ValueError:
+                n = 200
+            lines = _memory_handler.get_lines(n)
+            self._json({"lines": lines})
+        elif m2 := re.fullmatch(r"/tasks/([^/]+)/logs", path):
+            task_id = m2.group(1)
+            git_root = Path(self.server.controller.git.repo.working_dir)
+            log_file = git_root / "tasks" / task_id / "artifacts" / "agent_stdout.txt"
+            if not log_file.exists():
+                return self._error(404, f"No logs for task {task_id}")
+            self._json({"lines": log_file.read_text(encoding="utf-8", errors="replace").splitlines()})
         else:
             self._error(404, "Not found")
 
@@ -402,6 +457,9 @@ def start(config: dict) -> None:
         host if host != "0.0.0.0" else "localhost",
         port,
     )
+    logger.info("  GET  /             - dashboard UI")
+    logger.info("  GET  /logs         - server logs  (?n=200)")
+    logger.info("  GET  /tasks/{id}/logs - agent stdout log")
     logger.info("  POST /tasks        - submit a task")
     logger.info("  GET  /tasks        - list tasks  (?status=open,claimed,...)")
     logger.info("  GET  /tasks/{id}   - task detail")
@@ -444,6 +502,34 @@ def start(config: dict) -> None:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+def _setup_file_logging(log_cfg: dict) -> None:
+    """Attach a rotating file handler to the root logger based on config."""
+    import logging.handlers
+
+    log_path = Path(log_cfg.get("file", "logs/server.log"))
+    backup_count = int(log_cfg.get("backup_count", 7))
+    when = log_cfg.get("when", "midnight")      # "midnight" | "h" | "d" | "w0"–"w6"
+    interval = int(log_cfg.get("interval", 1))
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
+    handler = logging.handlers.TimedRotatingFileHandler(
+        filename=log_path,
+        when=when,
+        interval=interval,
+        backupCount=backup_count,
+        encoding="utf-8",
+        utc=False,
+    )
+    handler.setFormatter(fmt)
+    logging.getLogger().addHandler(handler)
+    logger.info(
+        "File logging: %s (rotate=%s/%d, keep=%d days)",
+        log_path, when, interval, backup_count,
+    )
+
+
 def main() -> None:
     import argparse
 
@@ -451,6 +537,8 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
     )
+    _memory_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s"))
+    logging.getLogger().addHandler(_memory_handler)
 
     parser = argparse.ArgumentParser(description="Distributed AI Task Server")
     parser.add_argument("--config", "-c", default="config/server.yaml", help="Config file path")
@@ -469,6 +557,10 @@ def main() -> None:
         cfg.setdefault("server", {})["host"] = args.host
     if args.port:
         cfg.setdefault("server", {})["port"] = args.port
+
+    log_cfg = cfg.get("logging", {})
+    if log_cfg.get("enabled", True):
+        _setup_file_logging(log_cfg)
 
     start(cfg)
 
